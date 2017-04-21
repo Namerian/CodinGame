@@ -2,5 +2,5 @@
 
 my (recent) submissions for CodinGame challenges
 
-CodinGame website: https://www.codingame.com/home
-my username: Omanidos
+CodinGame website: https://www.codingame.com/home.
+My username: Omanidos
