@@ -7,16 +7,29 @@
 using namespace std;
 
 //=============================================================
+// CONSTANTS
+//=============================================================
+
+const int MAP_WIDTH = 23;
+const int MAP_HEIGHT = 21;
+
+const int MAX_FIRING_RANGE = 5;
+
+//#############################################################
+//#############################################################
+// NAMESPACE COORDINATES
+//#############################################################
+//#############################################################
+
+namespace coordinates
+{
+
+//=============================================================
 // DECLARATIONS
 //=============================================================
 
 struct CubeCoord;
 struct OffsetCoord;
-
-struct Ship;
-struct Barrel;
-
-//******************************
 
 const int PosToIndex(const int& x, const int& y);
 const CubeCoord OffsetToCube(const OffsetCoord& offset);
@@ -26,12 +39,6 @@ const bool operator==(const OffsetCoord& a, const OffsetCoord& b);
 const bool operator<(const OffsetCoord& a, const OffsetCoord& b);
 
 const int ComputeDistance(const CubeCoord& a, const CubeCoord& b);
-
-Ship* GetShip(vector<Ship>& ships, int entityId);
-
-bool CommandGoToBarrel(Ship* ship, const vector<Barrel>& barrels);
-bool CommandWander(Ship* ship, const vector<char>& objectMap);
-bool CommandFire(Ship* ship, const vector<Ship>& enemyShips);
 
 //=============================================================
 // STRUCTS
@@ -92,6 +99,81 @@ struct OffsetCoord
 		return OffsetCoord(this->col + o.col, this->row + o.row);
 	}
 };
+
+//=============================================================
+// FUNCTIONS
+//=============================================================
+
+const int PosToIndex(const int& x, const int& y)
+{
+	return x + y * MAP_WIDTH;
+}
+
+const CubeCoord OffsetToCube(const OffsetCoord& offset)
+{
+	int x = offset.col - (offset.row - (offset.row & 1)) / 2;
+	int z = offset.row;
+	int y = -x - z;
+	return CubeCoord(x, y, z);
+}
+
+const OffsetCoord CubeToOffset(const CubeCoord& cube)
+{
+	int col = cube.x + (cube.z - (cube.z & 1)) / 2;
+	int row = cube.z;
+	return OffsetCoord(col, row);
+}
+
+const bool operator==(const OffsetCoord& a, const OffsetCoord& b)
+{
+	return a.col == b.col && a.row == b.row;
+}
+
+const bool operator<(const OffsetCoord& a, const OffsetCoord& b)
+{
+	return a.col < b.col || (a.col == b.col && a.row < b.row);
+}
+
+const int ComputeDistance(const CubeCoord& a, const CubeCoord& b)
+{
+	/*int distance = max(max(abs(a.x - b.x), abs(a.y - b.y)), abs(a.z - b.z));
+	 cerr << "ComputeDistance: a=" << a.x << "," << a.y << "," << a.z << " b=" << b.x << "," << b.y << "," << b.z << " distance=" << distance
+	 << endl;
+	 return distance;*/
+
+	return max(max(abs(a.x - b.x), abs(a.y - b.y)), abs(a.z - b.z));
+}
+
+//=============================================================
+// CONSTANTS
+//=============================================================
+
+const CubeCoord DIRECTIONS[6] =
+{ CubeCoord(1, -1, 0), CubeCoord(1, 0, -1), CubeCoord(0, 1, -1), CubeCoord(-1, 1, 0), CubeCoord(-1, 0, 1), CubeCoord(0, -1, 1) };
+
+}
+using namespace coordinates;
+
+//#############################################################
+//#############################################################
+// NAMESPACE GAMEDATA
+//#############################################################
+//#############################################################
+
+namespace gamedata{
+
+//=============================================================
+// DECLARATIONS
+//=============================================================
+
+struct Ship;
+struct Barrel;
+
+Ship* GetShip(vector<Ship>& ships, int entityId);
+
+//=============================================================
+// STRUCTS
+//=============================================================
 
 struct Ship
 {
@@ -171,24 +253,43 @@ struct Barrel
 };
 
 //=============================================================
-// CONSTANTS
+// FUNCTIONS
 //=============================================================
 
-const int MAP_WIDTH = 23;
-const int MAP_HEIGHT = 21;
+Ship* GetShip(vector<Ship>& ships, int entityId)
+{
+	for (unsigned int shipIndex = 0; shipIndex < ships.size(); shipIndex++)
+	{
+		if (ships.at(shipIndex).entityId == entityId)
+		{
+			return &ships.at(shipIndex);
+		}
+	}
 
-const CubeCoord DIRECTIONS[6] =
-{ CubeCoord(1, -1, 0), CubeCoord(1, 0, -1), CubeCoord(0, 1, -1), CubeCoord(-1, 1, 0), CubeCoord(-1, 0, 1), CubeCoord(0, -1, 1) };
+	return nullptr;
+}
 
-const int MAX_FIRING_RANGE = 5;
+}
+using namespace gamedata;
+
+
+
+
+
+
+
+
+//=============================================================
+// DECLARATIONS
+//=============================================================
+
+bool CommandGoToBarrel(Ship* ship, const vector<Barrel>& barrels);
+bool CommandWander(Ship* ship, const vector<char>& objectMap);
+bool CommandFire(Ship* ship, const vector<Ship>& enemyShips);
 
 //=============================================================
 // MAIN
 //=============================================================
-/**
- * Auto-generated code below aims at helping you parse
- * the standard input according to the problem statement.
- **/
 int main()
 {
 	srand(time(NULL));
@@ -198,8 +299,11 @@ int main()
 	vector<Ship> _enemyShips;
 	vector<Barrel> _barrels;
 
+	// Map with all the obstacles
+	// ' ' = no obstacle
+	// 'M' = Mine
+	// 'C' = Canonball
 	vector<char> _objectMap = vector<char>(MAP_WIDTH * MAP_HEIGHT);
-	vector<int> _cannonBallMap = vector<int>(MAP_WIDTH * MAP_HEIGHT);
 
 	for (int col = 0; col < MAP_WIDTH; col++)
 	{
@@ -207,7 +311,6 @@ int main()
 		{
 			int index = PosToIndex(col, row);
 			_objectMap[index] = ' ';
-			_cannonBallMap[index] = 0;
 		}
 	}
 
@@ -259,7 +362,7 @@ int main()
 			else if (entityType == "BARREL")
 			{
 				_barrels.emplace_back(Barrel(x, y, arg1));
-				_objectMap[PosToIndex(x, y)] = 'B';
+				//_objectMap[PosToIndex(x, y)] = 'B';
 			}
 			else if (entityType == "CANNONBALL")
 			{
@@ -271,7 +374,7 @@ int main()
 			}
 		}
 
-		for (int i = 0; i < _myShips.size(); i++)
+		for (unsigned int i = 0; i < _myShips.size(); i++)
 		{
 			if (!_myShips[i].updated)
 			{
@@ -310,7 +413,7 @@ int main()
 		}
 
 		// cleaning up
-		for (int i = 0; i < _myShips.size(); i++)
+		for (unsigned int i = 0; i < _myShips.size(); i++)
 		{
 			_myShips[i].updated = false;
 		}
@@ -324,7 +427,6 @@ int main()
 			{
 				int index = PosToIndex(col, row);
 				_objectMap[index] = ' ';
-				_cannonBallMap[index] = 0;
 			}
 		}
 	}
@@ -333,59 +435,6 @@ int main()
 //=============================================================
 //
 //=============================================================
-
-const int PosToIndex(const int& x, const int& y)
-{
-	return x + y * MAP_WIDTH;
-}
-
-const CubeCoord OffsetToCube(const OffsetCoord& offset)
-{
-	int x = offset.col - (offset.row - (offset.row & 1)) / 2;
-	int z = offset.row;
-	int y = -x - z;
-	return CubeCoord(x, y, z);
-}
-
-const OffsetCoord CubeToOffset(const CubeCoord& cube)
-{
-	int col = cube.x + (cube.z - (cube.z & 1)) / 2;
-	int row = cube.z;
-	return OffsetCoord(col, row);
-}
-
-const bool operator==(const OffsetCoord& a, const OffsetCoord& b)
-{
-	return a.col == b.col && a.row == b.row;
-}
-
-const bool operator<(const OffsetCoord& a, const OffsetCoord& b)
-{
-	return a.col < b.col || (a.col == b.col && a.row < b.row);
-}
-
-const int ComputeDistance(const CubeCoord& a, const CubeCoord& b)
-{
-	/*int distance = max(max(abs(a.x - b.x), abs(a.y - b.y)), abs(a.z - b.z));
-	 cerr << "ComputeDistance: a=" << a.x << "," << a.y << "," << a.z << " b=" << b.x << "," << b.y << "," << b.z << " distance=" << distance
-	 << endl;
-	 return distance;*/
-
-	return max(max(abs(a.x - b.x), abs(a.y - b.y)), abs(a.z - b.z));
-}
-
-Ship* GetShip(vector<Ship>& ships, int entityId)
-{
-	for (unsigned int shipIndex = 0; shipIndex < ships.size(); shipIndex++)
-	{
-		if (ships.at(shipIndex).entityId == entityId)
-		{
-			return &ships.at(shipIndex);
-		}
-	}
-
-	return nullptr;
-}
 
 bool CommandGoToBarrel(Ship* ship, const vector<Barrel>& barrels)
 {
