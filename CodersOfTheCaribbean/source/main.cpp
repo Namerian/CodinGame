@@ -5,6 +5,7 @@
 #include <time.h>
 #include <queue>
 #include <memory>
+#include <ctime>
 
 using namespace std;
 
@@ -17,6 +18,13 @@ const int MAP_HEIGHT = 21;
 
 const int MAX_FIRING_RANGE = 5;
 
+double elapsed(timespec& begin)
+{
+	timespec end;
+	clock_gettime(CLOCK_REALTIME, &end);
+	return (end.tv_nsec - begin.tv_nsec) / 1000000.;
+}
+
 //#############################################################
 //#############################################################
 // NAMESPACE COORDINATES
@@ -25,22 +33,6 @@ const int MAX_FIRING_RANGE = 5;
 
 namespace coordinates
 {
-
-//=============================================================
-// DECLARATIONS
-//=============================================================
-
-/*struct CubeCoord;
- struct OffsetCoord;
-
- const int PosToIndex(const int& x, const int& y);
- const CubeCoord OffsetToCube(const OffsetCoord& offset);
- const OffsetCoord CubeToOffset(const CubeCoord& cube);
-
- const bool operator==(const OffsetCoord& a, const OffsetCoord& b);
- const bool operator<(const OffsetCoord& a, const OffsetCoord& b);
-
- const int ComputeDistance(const CubeCoord& a, const CubeCoord& b);*/
 
 //=============================================================
 // STRUCTS
@@ -83,8 +75,8 @@ struct OffsetCoord
 
 	OffsetCoord(int col, int row)
 	{
-		this->col = col;
-		this->row = row;
+		this->col = max(0, min(MAP_WIDTH - 1, col));
+		this->row = max(0, min(MAP_HEIGHT - 1, row));
 	}
 
 	bool IsNull() const
@@ -223,7 +215,6 @@ public:
 		hasFired = 0;
 		updated = true;
 	}
-
 	Ship(int entityId, int x, int y, int rotation, int speed, int rum)
 	{
 		this->x = x;
@@ -237,7 +228,6 @@ public:
 		hasFired = 0;
 		updated = true;
 	}
-
 	Ship(const Ship& ship)
 	{
 		this->x = ship.x;
@@ -352,7 +342,46 @@ public:
 	{
 		wanderTarget = value;
 	}
-};
+	bool IsPositionLegal(const vector<string>& obstacleMap, int turn = -1) const
+	{
+		OffsetCoord center = GetCenterPosOffset();
+		OffsetCoord front = GetFrontPos();
+		OffsetCoord back = GetBackPos();
+
+		if (center.col < 0 || front.col < 0 || back.col < 0 || center.col >= MAP_WIDTH || front.col >= MAP_WIDTH || back.col >= MAP_WIDTH)
+			return false;
+
+		if (center.row < 0 || front.row < 0 || back.row < 0 || center.row >= MAP_HEIGHT || front.row >= MAP_HEIGHT
+				|| back.row >= MAP_HEIGHT)
+			return false;
+
+		string centerObj = obstacleMap[OffsetToIndex(center)];
+		string frontObj = obstacleMap[OffsetToIndex(front)];
+		string backObj = obstacleMap[OffsetToIndex(back)];
+
+		if (turn > -1)
+		{
+			if (centerObj == "e" || (centerObj[0] == 'C' && centerObj != "C" + (turn + 1)))
+			{
+				if (frontObj == "e" || (frontObj[0] == 'C' && frontObj != "C" + (turn + 1)))
+				{
+					if (backObj == "e" || (backObj[0] == 'C' && backObj != "C" + (turn + 1)))
+					{
+						return true;
+					}
+				}
+			}
+		}
+		else
+		{
+			if (centerObj == "e" && frontObj == "e" && backObj == "e")
+				return true;
+		}
+
+		return false;
+	}
+}
+;
 
 struct Barrel
 {
@@ -408,7 +437,7 @@ namespace pathfinder
 
 class Action
 {
-	// VARIABLES
+// VARIABLES
 private:
 	int _turn = 0;
 protected:
@@ -416,7 +445,7 @@ protected:
 	Ship _shipState;
 	int _heuristic = 0;
 
-	// CONSTRUCTORS
+// CONSTRUCTORS
 protected:
 	Action(shared_ptr<Action> previousAction)
 	{
@@ -445,7 +474,7 @@ public:
 	{
 	}
 
-	// FUNCTIONS
+// FUNCTIONS
 protected:
 	void ComputeMove()
 	{
@@ -476,25 +505,7 @@ public:
 	}
 	bool IsLegal(const vector<string>& obstacleMap) const
 	{
-		//cerr << "IsLegal called, pos=" << _shipState.GetCenterPosOffset().col << "," << _shipState.GetCenterPosOffset().row << endl;
-
-		OffsetCoord center = _shipState.GetCenterPosOffset();
-		OffsetCoord front = _shipState.GetFrontPos();
-		OffsetCoord back = _shipState.GetBackPos();
-
-		if (center.col < 0 || front.col < 0 || back.col < 0 || center.col >= MAP_WIDTH || front.col >= MAP_WIDTH || back.col >= MAP_WIDTH)
-			return false;
-
-		if (center.row < 0 || front.row < 0 || back.row < 0 || center.row >= MAP_HEIGHT || front.row >= MAP_HEIGHT
-				|| back.row >= MAP_HEIGHT)
-			return false;
-
-		if (obstacleMap[OffsetToIndex(_shipState.GetCenterPosOffset())] == "e"
-				&& obstacleMap[OffsetToIndex(_shipState.GetFrontPos())] == "e"
-				&& obstacleMap[OffsetToIndex(_shipState.GetBackPos())] == "e")
-			return true;
-
-		return false;
+		return _shipState.IsPositionLegal(obstacleMap, _turn);
 	}
 	virtual string GetCommand()=0;
 };
@@ -685,7 +696,7 @@ void ExpandAction(const Ship& initialState, shared_ptr<Action> previousAction, c
 		//cerr << "pre legal test, i=" << i << endl;
 		if (newActions[i]->IsLegal(obstacleMap))
 		{
-			//cerr << "ExpandAction: new action is legal" << endl;
+//cerr << "ExpandAction: new action is legal" << endl;
 			int index = actions.size();
 			actions.push_back(newActions[i]);
 			shared_ptr<Action> action = actions.at(index);
@@ -696,6 +707,9 @@ void ExpandAction(const Ship& initialState, shared_ptr<Action> previousAction, c
 
 int FindPath(const Ship& ship, const vector<string>& objectMap, const OffsetCoord destination, string& command)
 {
+	timespec begin;
+	clock_gettime(CLOCK_REALTIME, &begin);
+
 	vector<shared_ptr<Action>> actions;
 	PriorityQueue<shared_ptr<Action>, int> queue;
 
@@ -707,17 +721,18 @@ int FindPath(const Ship& ship, const vector<string>& objectMap, const OffsetCoor
 	{
 		shared_ptr<Action> currentAction = queue.Pop();
 
+		if (elapsed(begin) > 5)
+		{
+			lastAction = currentAction;
+			break;
+		}
+
 		Ship currentShipState = Ship(currentAction->GetShipState());
 
 		if (currentShipState.GetFrontPos() == destination)
 		{
 			lastAction = currentAction;
 			break;
-		}
-
-		if (currentShipState.GetFrontPos().col == destination.col && currentShipState.GetFrontPos().row == destination.row)
-		{
-			cerr << "destination found!" << endl;
 		}
 
 		ExpandAction(currentShipState, currentAction, objectMap, destination, actions, queue);
@@ -743,6 +758,8 @@ using namespace pathfinder;
 bool CommandGoToBarrel(Ship* ship, const vector<Barrel>& barrels, const vector<string>& objectMap);
 bool CommandWander(Ship* ship, const vector<string>& objectMap);
 bool CommandFire(Ship* ship, const vector<Ship>& enemyShips);
+bool CommandEmergencyEvading(Ship* ship, const vector<string>& objectMap);
+bool CommandFollow(Ship* ship, const vector<Ship>& enemyShips, const vector<string>& objectMap);
 
 //=============================================================
 // MAIN
@@ -751,15 +768,15 @@ int main()
 {
 	srand(time(NULL));
 
-	// game loop variables
+// game loop variables
 	vector<Ship> _myShips;
 	vector<Ship> _enemyShips;
 	vector<Barrel> _barrels;
 
-	// Map with all the obstacles
-	// "e" = no obstacle
-	// "M" = Mine
-	// "C" = Canonball
+// Map with all the obstacles
+// "e" = no obstacle
+// "M" = Mine
+// "C" = Canonball
 	vector<string> _objectMap = vector<string>(MAP_WIDTH * MAP_HEIGHT);
 
 	for (int col = 0; col < MAP_WIDTH; col++)
@@ -771,16 +788,19 @@ int main()
 		}
 	}
 
-	//*****************************
+//*****************************
 //	Ship ship = Ship(0, 5, 5, 0, 0, 100);
 //	string command;
 //	int result = FindPath(ship, _objectMap, OffsetCoord(10, 10), command);
 //	cerr << "path test: result=" << result << " command=" << command << endl;
-	//*****************************
+//*****************************
 
-	// game loop
+// game loop
 	while (1)
 	{
+		timespec beginMain;
+		clock_gettime(CLOCK_REALTIME, &beginMain);
+
 		int myShipCount; // the number of remaining ships
 		cin >> myShipCount;
 		cin.ignore();
@@ -847,29 +867,68 @@ int main()
 			}
 		}
 
+		//cerr << "elapsed=" << elapsed(beginMain) << endl;
+
+		double maxShipTime = 15;
+		if (myShipCount == 1)
+			maxShipTime = 45;
+		else if (myShipCount == 2)
+			maxShipTime = 22.5;
+
 		for (int i = 0; i < myShipCount; i++)
 		{
-			// Write an action using cout. DON'T FORGET THE "<< endl"
-			// To debug: cerr << "Debug messages..." << endl;
-			//cout << "MOVE 11 10" << endl; // Any valid action, such as "WAIT" or "MOVE x y"
+			if (elapsed(beginMain) > 40)
+			{
+				cout << "WAIT" << endl;
+				continue;
+			}
+
+			timespec begin;
+			clock_gettime(CLOCK_REALTIME, &begin);
 
 			Ship* currentShip = &_myShips[i];
 
-			//cerr << "rum2=" << currentShip->rum << endl;
-
-			if (CommandFire(currentShip, _enemyShips))
+			if (CommandEmergencyEvading(currentShip, _objectMap))
 			{
-				cerr << "Command: Fire!" << endl;
+				//cerr << "Command: Emergency Evading!" << endl;
 				continue;
 			}
-			else if (currentShip->GetRum() <= 80 && CommandGoToBarrel(currentShip, _barrels, _objectMap))
+			else if (CommandFire(currentShip, _enemyShips))
 			{
-				cerr << "Command: Go To Barrel!" << endl;
+				//cerr << "Command: Fire!" << endl;
+				continue;
+			}
+			else if (elapsed(begin) > maxShipTime || elapsed(beginMain) > 40)
+			{
+				//cerr << "Out of time!" << endl;
+				cout << "WAIT" << endl;
+				continue;
+			}
+			else if (currentShip->GetRum() <= 70 && CommandGoToBarrel(currentShip, _barrels, _objectMap))
+			{
+				//cerr << "Command: Go To Barrel!" << endl;
+				continue;
+			}
+			else if (elapsed(begin) > maxShipTime || elapsed(beginMain) > 45)
+			{
+				//cerr << "Out of time!" << endl;
+				cout << "WAIT" << endl;
+				continue;
+			}
+			else if (CommandFollow(currentShip, _enemyShips, _objectMap))
+			{
+				//cerr << "Command: Follow!" << endl;
+				continue;
+			}
+			else if (elapsed(begin) > maxShipTime || elapsed(beginMain) > 45)
+			{
+				//cerr << "Out of time!" << endl;
+				cout << "WAIT" << endl;
 				continue;
 			}
 			else if (CommandWander(currentShip, _objectMap))
 			{
-				cerr << "Command: Wander!" << endl;
+				//cerr << "Command: Wander!" << endl;
 				continue;
 			}
 
@@ -893,6 +952,8 @@ int main()
 				_objectMap[index] = "e";
 			}
 		}
+
+		cerr << "elapsed=" << elapsed(beginMain) << endl;
 	}
 }
 
@@ -922,20 +983,10 @@ bool CommandGoToBarrel(Ship* ship, const vector<Barrel>& barrels, const vector<s
 		string command;
 		if (FindPath(*ship, objectMap, nearestBarrelPos, command) > 0)
 		{
-			cerr << "FindPath success, command=" << command << endl;
+			//cerr << "FindPath success, command=" << command << endl;
 			cout << command << endl;
 			return true;
 		}
-		else
-		{
-			cerr << "FindPath failed!" << endl;
-			cout << "MOVE " << nearestBarrelPos.col << " " << nearestBarrelPos.row << endl;
-			return true;
-		}
-
-//		cerr << "CommandGoToBarrel: shortestDistance=" << shortestDistance << endl;
-//		cout << "MOVE " << nearestBarrelPos.col << " " << nearestBarrelPos.row << endl;
-//		return true;
 	}
 
 	return false;
@@ -945,7 +996,7 @@ bool CommandWander(Ship* ship, const vector<string>& objectMap)
 {
 	if (ship->GetCenterPosOffset() == ship->GetWanderTarget())
 	{
-		cerr << "CommandWander: target reached" << endl;
+		//cerr << "CommandWander: target reached" << endl;
 		ship->SetWanderTarget(OffsetCoord());
 	}
 
@@ -955,9 +1006,9 @@ bool CommandWander(Ship* ship, const vector<string>& objectMap)
 
 		do
 		{
-			x = 1 + (rand() % (int) (MAP_WIDTH - 1));
-			y = 1 + (rand() % (int) (MAP_HEIGHT - 1));
-			cerr << "CommandWander: newX=" << x << " newY=" << y << endl;
+			x = 1 + (rand() % (int) (MAP_WIDTH - 2));
+			y = 1 + (rand() % (int) (MAP_HEIGHT - 2));
+			//cerr << "CommandWander: newX=" << x << " newY=" << y << endl;
 		} while (objectMap[PosToIndex(x, y)] != "e");
 
 		ship->SetWanderTarget(OffsetCoord(x, y));
@@ -966,14 +1017,8 @@ bool CommandWander(Ship* ship, const vector<string>& objectMap)
 	string command;
 	if (FindPath(*ship, objectMap, ship->GetWanderTarget(), command) > 0)
 	{
-		cerr << "FindPath success, command=" << command << endl;
+		//cerr << "FindPath success, command=" << command << endl;
 		cout << command << endl;
-		return true;
-	}
-	else
-	{
-		cerr << "FindPath failed!" << endl;
-		cout << "MOVE " << ship->GetWanderTarget().col << " " << ship->GetWanderTarget().row << endl;
 		return true;
 	}
 
@@ -1014,3 +1059,88 @@ bool CommandFire(Ship* ship, const vector<Ship>& enemyShips)
 
 	return false;
 }
+
+bool CommandEmergencyEvading(Ship* ship, const vector<string>& objectMap)
+{
+	if (!ship->IsPositionLegal(objectMap, 0))
+	{
+		WaitAction waitAction = WaitAction(*ship, nullptr, CubeCoord(0, 0, 0));
+
+		if (waitAction.IsLegal(objectMap))
+		{
+			cout << "WAIT" << endl;
+			return true;
+		}
+
+		PortAction portAction = PortAction(*ship, nullptr, CubeCoord(0, 0, 0));
+
+		if (portAction.IsLegal(objectMap))
+		{
+			cout << "PORT" << endl;
+			return true;
+		}
+
+		StarboardAction starboardAction = StarboardAction(*ship, nullptr, CubeCoord(0, 0, 0));
+
+		if (starboardAction.IsLegal(objectMap))
+		{
+			cout << "STARBOARD" << endl;
+			return true;
+		}
+
+		FasterAction fasterAction = FasterAction(*ship, nullptr, CubeCoord(0, 0, 0));
+
+		if (fasterAction.IsLegal(objectMap))
+		{
+			cout << "FASTER" << endl;
+			return true;
+		}
+
+		SlowerAction slowerAction = SlowerAction(*ship, nullptr, CubeCoord(0, 0, 0));
+
+		if (slowerAction.IsLegal(objectMap))
+		{
+			cout << "SLOWER" << endl;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool CommandFollow(Ship* ship, const vector<Ship>& enemyShips, const vector<string>& objectMap)
+{
+	Ship targetShip;
+	int targetDistance = 10;
+
+	for (unsigned int i = 0; i < enemyShips.size(); i++)
+	{
+		Ship currentEnemyShip = enemyShips[i];
+
+		int distance = ComputeDistance(ship->GetCenterPosCube(), currentEnemyShip.GetCenterPosCube());
+
+		if (distance < targetDistance)
+		{
+			targetDistance = distance;
+			targetShip = currentEnemyShip;
+		}
+	}
+
+	if (targetDistance < 10)
+	{
+		OffsetCoord targetPos;
+		string command;
+
+		targetPos = CubeToOffset(targetShip.GetCenterPosCube() + DIRECTIONS[targetShip.GetRotation()] * (targetShip.GetSpeed() * 2));
+
+		if (FindPath(*ship, objectMap, targetPos, command) > 0)
+		{
+			//cerr << "FindPath success, command=" << command << endl;
+			cout << command << endl;
+			return true;
+		}
+	}
+
+	return false;
+}
+
