@@ -16,7 +16,7 @@ using namespace std;
 const int MAP_WIDTH = 23;
 const int MAP_HEIGHT = 21;
 
-const int MAX_FIRING_RANGE = 5;
+const int MAX_FIRING_RANGE = 4;
 
 double elapsed(timespec& begin)
 {
@@ -75,8 +75,8 @@ struct OffsetCoord
 
 	OffsetCoord(int col, int row)
 	{
-		this->col = max(0, min(MAP_WIDTH - 1, col));
-		this->row = max(0, min(MAP_HEIGHT - 1, row));
+		this->col = col;
+		this->row = row;
 	}
 
 	bool IsNull() const
@@ -154,7 +154,8 @@ const int RoundDirection(int direction)
 
 const int GetOppositeDirection(int direction)
 {
-	return RoundDirection(direction + 6);
+	//cerr << "direction="<<direction<<" opposite="<<RoundDirection(direction + 3)<<endl;
+	return RoundDirection(direction + 3);
 }
 
 //=============================================================
@@ -193,7 +194,7 @@ class Ship
 {
 	// VARIABLES
 private:
-	int entityId;
+	int _entityId;
 	int x;
 	int y;
 	int rotation;
@@ -211,7 +212,7 @@ public:
 		this->x = -1;
 		this->y = -1;
 
-		entityId = rotation = speed = rum = -1;
+		_entityId = rotation = speed = rum = -1;
 		hasFired = 0;
 		updated = true;
 	}
@@ -220,7 +221,7 @@ public:
 		this->x = x;
 		this->y = y;
 
-		this->entityId = entityId;
+		this->_entityId = entityId;
 		this->rotation = rotation;
 		this->speed = speed;
 		this->rum = rum;
@@ -233,7 +234,7 @@ public:
 		this->x = ship.x;
 		this->y = ship.y;
 
-		this->entityId = ship.entityId;
+		this->_entityId = ship._entityId;
 		this->rotation = ship.rotation;
 		this->speed = ship.speed;
 		this->rum = ship.rum;
@@ -278,7 +279,7 @@ public:
 	}
 	int GetEntityId() const
 	{
-		return entityId;
+		return _entityId;
 	}
 	int GetX() const
 	{
@@ -342,11 +343,14 @@ public:
 	{
 		wanderTarget = value;
 	}
-	bool IsPositionLegal(const vector<string>& obstacleMap, int turn = -1) const
+	bool IsShipPositionLegal(const vector<string>* obstacleMap, unsigned int turn) const
 	{
 		OffsetCoord center = GetCenterPosOffset();
+		//cerr << "CenterPos=" << center.col << "," << center.row << " object=" << obstacleMap->at(OffsetToIndex(center)) << endl;
 		OffsetCoord front = GetFrontPos();
+		//cerr << "FrontPos=" << front.col << "," << front.row << endl;
 		OffsetCoord back = GetBackPos();
+		//cerr << "BackPos=" << back.col << "," << back.row << endl;
 
 		if (center.col < 0 || front.col < 0 || back.col < 0 || center.col >= MAP_WIDTH || front.col >= MAP_WIDTH || back.col >= MAP_WIDTH)
 			return false;
@@ -355,28 +359,26 @@ public:
 				|| back.row >= MAP_HEIGHT)
 			return false;
 
-		string centerObj = obstacleMap[OffsetToIndex(center)];
-		string frontObj = obstacleMap[OffsetToIndex(front)];
-		string backObj = obstacleMap[OffsetToIndex(back)];
+		if (IsPositionLegal(obstacleMap->at(OffsetToIndex(center)), turn) && IsPositionLegal(obstacleMap->at(OffsetToIndex(front)), turn)
+				&& IsPositionLegal(obstacleMap->at(OffsetToIndex(back)), turn))
+			return true;
 
-		if (turn > -1)
-		{
-			if (centerObj == "e" || (centerObj[0] == 'C' && centerObj != "C" + (turn + 1)))
-			{
-				if (frontObj == "e" || (frontObj[0] == 'C' && frontObj != "C" + (turn + 1)))
-				{
-					if (backObj == "e" || (backObj[0] == 'C' && backObj != "C" + (turn + 1)))
-					{
-						return true;
-					}
-				}
-			}
-		}
-		else
-		{
-			if (centerObj == "e" && frontObj == "e" && backObj == "e")
-				return true;
-		}
+		return false;
+	}
+	bool IsPositionLegal(const string& object, const unsigned int turn) const
+	{
+		//cerr << "IsPositionLegal object=" << object << " turn=" << turn << endl;
+
+		if (object == "e")
+			return true;
+
+		if (object[0] == 'C' && object != string("C") + to_string(turn + 1))
+			return true;
+
+		if ((object[0] == 'S' && turn > 1) || object == (string("S") + to_string(_entityId)))
+			return true;
+
+		//cerr << "legal test fail: shipId="<<_entityId<<" obj="<<object<<endl;
 
 		return false;
 	}
@@ -503,9 +505,9 @@ public:
 	{
 		return _shipState;
 	}
-	bool IsLegal(const vector<string>& obstacleMap) const
+	bool IsLegal(const vector<string>* obstacleMap) const
 	{
-		return _shipState.IsPositionLegal(obstacleMap, _turn);
+		return _shipState.IsShipPositionLegal(obstacleMap, _turn);
 	}
 	virtual string GetCommand()=0;
 };
@@ -661,7 +663,7 @@ private:
 	priority_queue<element, vector<element>, PriorityCompare> elements;
 };
 
-void ExpandAction(const Ship& initialState, shared_ptr<Action> previousAction, const vector<string>& obstacleMap,
+void ExpandAction(const Ship& initialState, shared_ptr<Action> previousAction, const vector<string>* obstacleMap,
 		const OffsetCoord& destination, vector<shared_ptr<Action>>& actions, PriorityQueue<shared_ptr<Action>, int>& queue)
 {
 	vector<shared_ptr<Action>> newActions;
@@ -696,16 +698,18 @@ void ExpandAction(const Ship& initialState, shared_ptr<Action> previousAction, c
 		//cerr << "pre legal test, i=" << i << endl;
 		if (newActions[i]->IsLegal(obstacleMap))
 		{
-//cerr << "ExpandAction: new action is legal" << endl;
+			//cerr << "ExpandAction: new action is legal" << endl;
 			int index = actions.size();
 			actions.push_back(newActions[i]);
 			shared_ptr<Action> action = actions.at(index);
 			queue.Push(action, newActions[i]->GetTotalCost());
 		}
+		//else
+		//cerr << "ExpandAction: new action is illegal" << endl;
 	}
 }
 
-int FindPath(const Ship& ship, const vector<string>& objectMap, const OffsetCoord destination, string& command)
+int FindPath(const Ship& ship, const vector<string>* objectMap, const OffsetCoord destination, string& command)
 {
 	timespec begin;
 	clock_gettime(CLOCK_REALTIME, &begin);
@@ -722,10 +726,10 @@ int FindPath(const Ship& ship, const vector<string>& objectMap, const OffsetCoor
 		shared_ptr<Action> currentAction = queue.Pop();
 
 		if (elapsed(begin) > 5)
-		{
-			lastAction = currentAction;
-			break;
-		}
+		 {
+		 lastAction = currentAction;
+		 break;
+		 }
 
 		Ship currentShipState = Ship(currentAction->GetShipState());
 
@@ -743,7 +747,10 @@ int FindPath(const Ship& ship, const vector<string>& objectMap, const OffsetCoor
 	{
 		command = (*lastAction).GetFirstCommand();
 		result = 1;
+		cerr << "FindPath successfull!" << endl;
 	}
+	else
+		cerr << "FindPath failed!" << endl;
 
 	return result;
 }
@@ -755,11 +762,11 @@ using namespace pathfinder;
 // DECLARATIONS
 //=============================================================
 
-bool CommandGoToBarrel(Ship* ship, const vector<Barrel>& barrels, const vector<string>& objectMap);
-bool CommandWander(Ship* ship, const vector<string>& objectMap);
+bool CommandGoToBarrel(Ship* ship, const vector<Barrel>& barrels, const vector<string>* objectMap);
+bool CommandWander(Ship* ship, const vector<string>* objectMap);
 bool CommandFire(Ship* ship, const vector<Ship>& enemyShips);
-bool CommandEmergencyEvading(Ship* ship, const vector<string>& objectMap);
-bool CommandFollow(Ship* ship, const vector<Ship>& enemyShips, const vector<string>& objectMap);
+bool CommandEmergencyEvading(Ship* ship, const vector<string>* objectMap);
+bool CommandFollow(Ship* ship, const vector<Ship>& enemyShips, const vector<string>* objectMap);
 
 //=============================================================
 // MAIN
@@ -777,24 +784,23 @@ int main()
 // "e" = no obstacle
 // "M" = Mine
 // "C" = Canonball
-	vector<string> _objectMap = vector<string>(MAP_WIDTH * MAP_HEIGHT);
+	vector<string> _objectMap = vector<string>(MAP_WIDTH * MAP_HEIGHT, "e");
 
-	for (int col = 0; col < MAP_WIDTH; col++)
-	{
-		for (int row = 0; row < MAP_HEIGHT; row++)
-		{
-			int index = PosToIndex(col, row);
-			_objectMap[index] = "e";
-		}
-	}
+	/*for (int col = 0; col < MAP_WIDTH; col++)
+	 {
+	 for (int row = 0; row < MAP_HEIGHT; row++)
+	 {
+	 int index = PosToIndex(col, row);
+	 _objectMap[index] = "e";
+	 }
+	 }*/
 
 //*****************************
-//	Ship ship = Ship(0, 5, 5, 0, 0, 100);
+//	Ship ship = Ship(0, 5, 5, 3, 0, 100);
 //	string command;
-//	int result = FindPath(ship, _objectMap, OffsetCoord(10, 10), command);
+//	int result = FindPath(ship, &_objectMap, OffsetCoord(10, 10), command);
 //	cerr << "path test: result=" << result << " command=" << command << endl;
 //*****************************
-
 // game loop
 	while (1)
 	{
@@ -824,13 +830,16 @@ int main()
 
 			if (entityType == "SHIP")
 			{
+				Ship* ship;
+
 				if (arg4 == 1)
 				{
-					Ship* ship = GetShip(_myShips, entityId);
+					ship = GetShip(_myShips, entityId);
 
 					if (ship == nullptr)
 					{
-						_myShips.emplace_back(Ship(entityId, x, y, arg1, arg2, arg3));
+						_myShips.emplace_back(entityId, x, y, arg1, arg2, arg3);
+						ship = &_myShips[_myShips.size() - 1];
 					}
 					else
 					{
@@ -840,8 +849,13 @@ int main()
 				}
 				else
 				{
-					_enemyShips.emplace_back(Ship(entityId, x, y, arg1, arg2, arg3));
+					_enemyShips.emplace_back(entityId, x, y, arg1, arg2, arg3);
+					ship = &_myShips[_enemyShips.size() - 1];
 				}
+
+				_objectMap[OffsetToIndex(ship->GetCenterPosOffset())] = string("S") + to_string(ship->GetEntityId());
+				_objectMap[OffsetToIndex(ship->GetFrontPos())] = string("S") + to_string(ship->GetEntityId());
+				_objectMap[OffsetToIndex(ship->GetBackPos())] = string("S") + to_string(ship->GetEntityId());
 			}
 			else if (entityType == "BARREL")
 			{
@@ -850,16 +864,21 @@ int main()
 			}
 			else if (entityType == "CANNONBALL")
 			{
-				_objectMap[PosToIndex(x, y)] = "C" + arg2;
+				_objectMap[PosToIndex(x, y)] = string("C") + to_string(arg2);
 			}
 			else if (entityType == "MINE")
 			{
-				_objectMap[PosToIndex(x, y)] = "M";
+				_objectMap[PosToIndex(x, y)] = string("M");
+				//cerr << "objectMap at(" << x << "," << y << ")=" << _objectMap.at(PosToIndex(x, y)) << endl;
 			}
 		}
 
 		for (unsigned int i = 0; i < _myShips.size(); i++)
 		{
+			//Ship* ship = &_myShips.at(i);
+			//int index = OffsetToIndex(ship->GetCenterPosOffset());
+			//cerr << "shipId="<< ship->GetEntityId()<< " index="<<index<< " content=" << _objectMap.at(index) << endl;
+
 			if (!_myShips[i].GetUpdated())
 			{
 				_myShips.erase(_myShips.begin() + i);
@@ -877,8 +896,9 @@ int main()
 
 		for (int i = 0; i < myShipCount; i++)
 		{
-			if (elapsed(beginMain) > 40)
+			if (elapsed(beginMain) > 45)
 			{
+				cerr << "Out of time 1!" << endl;
 				cout << "WAIT" << endl;
 				continue;
 			}
@@ -888,50 +908,45 @@ int main()
 
 			Ship* currentShip = &_myShips[i];
 
-			if (CommandEmergencyEvading(currentShip, _objectMap))
+			if (CommandEmergencyEvading(currentShip, &_objectMap))
 			{
-				//cerr << "Command: Emergency Evading!" << endl;
+				cerr << "Command: Emergency Evading!" << endl;
 				continue;
 			}
 			else if (CommandFire(currentShip, _enemyShips))
 			{
-				//cerr << "Command: Fire!" << endl;
+				cerr << "Command: Fire!" << endl;
 				continue;
 			}
-			else if (elapsed(begin) > maxShipTime || elapsed(beginMain) > 40)
+			else if (currentShip->GetRum() <= 70 && CommandGoToBarrel(currentShip, _barrels, &_objectMap))
 			{
-				//cerr << "Out of time!" << endl;
-				cout << "WAIT" << endl;
-				continue;
-			}
-			else if (currentShip->GetRum() <= 70 && CommandGoToBarrel(currentShip, _barrels, _objectMap))
-			{
-				//cerr << "Command: Go To Barrel!" << endl;
+				cerr << "Command: Go To Barrel!" << endl;
 				continue;
 			}
 			else if (elapsed(begin) > maxShipTime || elapsed(beginMain) > 45)
 			{
-				//cerr << "Out of time!" << endl;
+				cerr << "Out of time 2!" << endl;
 				cout << "WAIT" << endl;
 				continue;
 			}
-			else if (CommandFollow(currentShip, _enemyShips, _objectMap))
+			else if (CommandFollow(currentShip, _enemyShips, &_objectMap))
 			{
-				//cerr << "Command: Follow!" << endl;
+				cerr << "Command: Follow!" << endl;
 				continue;
 			}
 			else if (elapsed(begin) > maxShipTime || elapsed(beginMain) > 45)
 			{
-				//cerr << "Out of time!" << endl;
+				cerr << "Out of time 3!" << endl;
 				cout << "WAIT" << endl;
 				continue;
 			}
-			else if (CommandWander(currentShip, _objectMap))
+			else if (CommandWander(currentShip, &_objectMap))
 			{
-				//cerr << "Command: Wander!" << endl;
+				cerr << "Command: Wander!" << endl;
 				continue;
 			}
 
+			cerr << "reached end!" << endl;
 			cout << "WAIT" << endl;
 		}
 
@@ -944,14 +959,11 @@ int main()
 		_enemyShips.clear();
 		_barrels.clear();
 
-		for (int col = 0; col < MAP_WIDTH; col++)
-		{
-			for (int row = 0; row < MAP_HEIGHT; row++)
-			{
-				int index = PosToIndex(col, row);
-				_objectMap[index] = "e";
-			}
-		}
+		_objectMap = vector<string>(MAP_WIDTH * MAP_HEIGHT, "e");
+//		for (unsigned int index = 0; index < _objectMap.size(); index++)
+//		{
+//			_objectMap.at(index) = "e";
+//		}
 
 		cerr << "elapsed=" << elapsed(beginMain) << endl;
 	}
@@ -961,7 +973,7 @@ int main()
 //
 //=============================================================
 
-bool CommandGoToBarrel(Ship* ship, const vector<Barrel>& barrels, const vector<string>& objectMap)
+bool CommandGoToBarrel(Ship* ship, const vector<Barrel>& barrels, const vector<string>* objectMap)
 {
 	int shortestDistance = 999;
 	OffsetCoord nearestBarrelPos;
@@ -992,7 +1004,7 @@ bool CommandGoToBarrel(Ship* ship, const vector<Barrel>& barrels, const vector<s
 	return false;
 }
 
-bool CommandWander(Ship* ship, const vector<string>& objectMap)
+bool CommandWander(Ship* ship, const vector<string>* objectMap)
 {
 	if (ship->GetCenterPosOffset() == ship->GetWanderTarget())
 	{
@@ -1006,10 +1018,10 @@ bool CommandWander(Ship* ship, const vector<string>& objectMap)
 
 		do
 		{
-			x = 1 + (rand() % (int) (MAP_WIDTH - 2));
-			y = 1 + (rand() % (int) (MAP_HEIGHT - 2));
+			x = 1 + (rand() % (int) (MAP_WIDTH - 3));
+			y = 1 + (rand() % (int) (MAP_HEIGHT - 3));
 			//cerr << "CommandWander: newX=" << x << " newY=" << y << endl;
-		} while (objectMap[PosToIndex(x, y)] != "e");
+		} while (objectMap->at(PosToIndex(x, y)) != "e");
 
 		ship->SetWanderTarget(OffsetCoord(x, y));
 	}
@@ -1060,9 +1072,9 @@ bool CommandFire(Ship* ship, const vector<Ship>& enemyShips)
 	return false;
 }
 
-bool CommandEmergencyEvading(Ship* ship, const vector<string>& objectMap)
+bool CommandEmergencyEvading(Ship* ship, const vector<string>* objectMap)
 {
-	if (!ship->IsPositionLegal(objectMap, 0))
+	if (!ship->IsShipPositionLegal(objectMap, 0))
 	{
 		WaitAction waitAction = WaitAction(*ship, nullptr, CubeCoord(0, 0, 0));
 
@@ -1108,10 +1120,10 @@ bool CommandEmergencyEvading(Ship* ship, const vector<string>& objectMap)
 	return false;
 }
 
-bool CommandFollow(Ship* ship, const vector<Ship>& enemyShips, const vector<string>& objectMap)
+bool CommandFollow(Ship* ship, const vector<Ship>& enemyShips, const vector<string>* objectMap)
 {
 	Ship targetShip;
-	int targetDistance = 10;
+	int targetDistance = 15;
 
 	for (unsigned int i = 0; i < enemyShips.size(); i++)
 	{
@@ -1126,12 +1138,14 @@ bool CommandFollow(Ship* ship, const vector<Ship>& enemyShips, const vector<stri
 		}
 	}
 
-	if (targetDistance < 10)
+	if (targetDistance < 15)
 	{
 		OffsetCoord targetPos;
 		string command;
 
 		targetPos = CubeToOffset(targetShip.GetCenterPosCube() + DIRECTIONS[targetShip.GetRotation()] * (targetShip.GetSpeed() * 2));
+		targetPos.col = max(0, min(targetPos.col, MAP_WIDTH - 2));
+		targetPos.row = max(0, min(targetPos.row, MAP_HEIGHT - 2));
 
 		if (FindPath(*ship, objectMap, targetPos, command) > 0)
 		{
