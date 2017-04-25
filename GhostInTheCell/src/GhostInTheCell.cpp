@@ -38,6 +38,26 @@ public:
 		_numCyborgs = numCyborgs;
 		_production = production;
 	}
+
+	int GetId()
+	{
+		return _id;
+	}
+
+	int GetOwner() const
+	{
+		return _owner;
+	}
+
+	int GetNumCyborgs()
+	{
+		return _numCyborgs;
+	}
+
+	int GetProduction()
+	{
+		return _production;
+	}
 };
 
 class Troop
@@ -110,18 +130,95 @@ public:
 		return &_factories.at(id);
 	}
 
-}
-;
+	vector<Factory*> GetOwnedFactories(int owner)
+	{
+		vector<Factory*> result;
+
+		for (int i = 0; i < _numFactories; i++)
+		{
+			if (_factories.at(i).GetOwner() == owner)
+			{
+				result.push_back(&_factories.at(i));
+			}
+		}
+
+		return result;
+	}
+
+	int GetDistance(int factory1, int factory2)
+	{
+		return _distanceMatrix.at(factory1).at(factory2);
+	}
+
+	int GetNumFactories()
+	{
+		return _numFactories;
+	}
+};
 
 }
 using namespace model;
+
+int SelectHighProductionFactory(int originFactoryId, Model* model, int targetOwner)
+{
+	int bestProduction = 0;
+	int shortestDistance = 21;
+	int targetFactoryId = -1;
+
+	for (int id = 0; id < model->GetNumFactories(); id++)
+	{
+		if (id != originFactoryId)
+		{
+			Factory* currentFactory = model->GetFactory(id);
+
+			if (currentFactory->GetOwner() == targetOwner)
+			{
+				if (currentFactory->GetProduction() > bestProduction
+						|| (currentFactory->GetProduction() == bestProduction
+								&& model->GetDistance(originFactoryId, currentFactory->GetId()) < shortestDistance))
+				{
+					bestProduction = currentFactory->GetProduction();
+					shortestDistance = model->GetDistance(originFactoryId, currentFactory->GetId());
+					targetFactoryId = currentFactory->GetId();
+				}
+			}
+		}
+	}
+
+	return targetFactoryId;
+}
+
+int SelectedNearestFactory(int originFactoryId, Model* model)
+{
+	int shortestDistance = 21;
+	int targetFactoryId = -1;
+
+	for (int id = 0; id < model->GetNumFactories(); id++)
+	{
+		if (id != originFactoryId)
+		{
+			Factory* currentFactory = model->GetFactory(id);
+
+			if (currentFactory->GetOwner() != 1)
+			{
+				if (model->GetDistance(originFactoryId, currentFactory->GetId()) < shortestDistance)
+				{
+					shortestDistance = model->GetDistance(originFactoryId, currentFactory->GetId());
+					targetFactoryId = currentFactory->GetId();
+				}
+			}
+		}
+	}
+
+	return targetFactoryId;
+}
 
 int main()
 {
 	Model* _model;
 
-	//************************************************************
-	// initialization
+//************************************************************
+// initialization
 
 	int factoryCount; // the number of factories
 	cin >> factoryCount;
@@ -142,8 +239,8 @@ int main()
 		_model->SetDistance(factory1, factory2, distance);
 	}
 
-	//************************************************************
-	// game loop
+//************************************************************
+// game loop
 
 	while (1)
 	{
@@ -173,10 +270,49 @@ int main()
 			}
 		}
 
+		//************************************************************
+		//
+
 		// Write an action using cout. DON'T FORGET THE "<< endl"
 		// To debug: cerr << "Debug messages..." << endl;
 
 		// Any valid action, such as "WAIT" or "MOVE source destination cyborgs"
+		//cout << "WAIT" << endl;
+
+		vector<Factory*> myFactories = _model->GetOwnedFactories(1);
+		Factory* selectedFactory = myFactories.at(0);
+
+		for (unsigned int i = 1; i < myFactories.size(); i++)
+		{
+			if (myFactories.at(i)->GetNumCyborgs() > selectedFactory->GetNumCyborgs())
+			{
+				selectedFactory = myFactories.at(i);
+			}
+		}
+
+		if (selectedFactory->GetNumCyborgs() > 12)
+		{
+			int targetFactoryId = SelectHighProductionFactory(selectedFactory->GetId(), _model, 0);
+
+			if (targetFactoryId == -1)
+			{
+				SelectHighProductionFactory(selectedFactory->GetId(), _model, -1);
+			}
+
+			if (targetFactoryId == -1)
+			{
+				targetFactoryId = SelectedNearestFactory(selectedFactory->GetId(), _model);
+			}
+
+			if (targetFactoryId >= 0)
+			{
+				Factory* targetFactory = _model->GetFactory(targetFactoryId);
+				cout << "MOVE " << selectedFactory->GetId() << " " << targetFactory->GetId() << " " << selectedFactory->GetNumCyborgs() - 10
+						<< endl;
+				continue;
+			}
+		}
+
 		cout << "WAIT" << endl;
 
 		//************************************************************
@@ -185,8 +321,8 @@ int main()
 		_model->CleanUp();
 	}
 
-	//************************************************************
-	// final cleaning up
+//************************************************************
+// final cleaning up
 
 	delete (_model);
 }
