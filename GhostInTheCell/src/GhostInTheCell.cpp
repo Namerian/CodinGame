@@ -68,7 +68,7 @@ private:
 	int _destinationId;
 	int _numCyborgs;
 	int _timeRemaining;
-public:
+	public:
 	Troop(int owner, int originId, int destinationId, int numCyborgs, int timeRemaining)
 	{
 		_owner = owner;
@@ -159,6 +159,12 @@ public:
 }
 using namespace model;
 
+//################################################################################
+//################################################################################
+// HELPER METHODS
+//################################################################################
+//################################################################################
+
 int SelectHighProductionFactory(int originFactoryId, Model* model, int targetOwner)
 {
 	int bestProduction = 0;
@@ -171,16 +177,21 @@ int SelectHighProductionFactory(int originFactoryId, Model* model, int targetOwn
 		{
 			Factory* currentFactory = model->GetFactory(id);
 
-			if (currentFactory->GetOwner() == targetOwner)
+			if (currentFactory->GetOwner() == targetOwner
+					&& currentFactory->GetProduction() > 0
+					&& model->GetDistance(originFactoryId, currentFactory->GetId()) < shortestDistance)
 			{
-				if (currentFactory->GetProduction() > bestProduction
-						|| (currentFactory->GetProduction() == bestProduction
-								&& model->GetDistance(originFactoryId, currentFactory->GetId()) < shortestDistance))
-				{
-					bestProduction = currentFactory->GetProduction();
-					shortestDistance = model->GetDistance(originFactoryId, currentFactory->GetId());
-					targetFactoryId = currentFactory->GetId();
-				}
+				shortestDistance = model->GetDistance(originFactoryId, currentFactory->GetId());
+				targetFactoryId = currentFactory->GetId();
+
+				/*if (currentFactory->GetProduction() > bestProduction
+				 || (currentFactory->GetProduction() == bestProduction
+				 && model->GetDistance(originFactoryId, currentFactory->GetId()) < shortestDistance))
+				 {
+				 bestProduction = currentFactory->GetProduction();
+				 shortestDistance = model->GetDistance(originFactoryId, currentFactory->GetId());
+				 targetFactoryId = currentFactory->GetId();
+				 }*/
 			}
 		}
 	}
@@ -213,6 +224,17 @@ int SelectedNearestFactory(int originFactoryId, Model* model)
 	return targetFactoryId;
 }
 
+int ComputeAvailableCyborgs(Factory* factory)
+{
+	int garrison = factory->GetProduction() * 5;
+	return max(0, factory->GetNumCyborgs() - garrison);
+}
+
+//################################################################################
+//################################################################################
+// MAIN
+//################################################################################
+//################################################################################
 int main()
 {
 	Model* _model;
@@ -280,40 +302,49 @@ int main()
 		//cout << "WAIT" << endl;
 
 		vector<Factory*> myFactories = _model->GetOwnedFactories(1);
-		Factory* selectedFactory = myFactories.at(0);
+		bool gaveOrder = false;
 
-		for (unsigned int i = 1; i < myFactories.size(); i++)
+		for (unsigned int i = 0; i < myFactories.size(); i++)
 		{
-			if (myFactories.at(i)->GetNumCyborgs() > selectedFactory->GetNumCyborgs())
+			Factory* selectedFactory = nullptr;
+
+			if (ComputeAvailableCyborgs(myFactories.at(i)) > 0)
 			{
 				selectedFactory = myFactories.at(i);
 			}
+
+			if (selectedFactory != nullptr)
+			{
+				int targetFactoryId = SelectHighProductionFactory(selectedFactory->GetId(), _model, 0);
+
+				if (targetFactoryId == -1)
+				{
+					SelectHighProductionFactory(selectedFactory->GetId(), _model, -1);
+				}
+
+				if (targetFactoryId == -1)
+				{
+					targetFactoryId = SelectedNearestFactory(selectedFactory->GetId(), _model);
+				}
+
+				if (targetFactoryId >= 0)
+				{
+					Factory* targetFactory = _model->GetFactory(targetFactoryId);
+
+					if (gaveOrder)
+						cout << ";";
+
+					cout << "MOVE " << selectedFactory->GetId() << " " << targetFactory->GetId() << " "
+							<< ComputeAvailableCyborgs(selectedFactory);
+					gaveOrder = true;
+				}
+			}
 		}
 
-		if (selectedFactory->GetNumCyborgs() > 12)
-		{
-			int targetFactoryId = SelectHighProductionFactory(selectedFactory->GetId(), _model, 0);
-
-			if (targetFactoryId == -1)
-			{
-				SelectHighProductionFactory(selectedFactory->GetId(), _model, -1);
-			}
-
-			if (targetFactoryId == -1)
-			{
-				targetFactoryId = SelectedNearestFactory(selectedFactory->GetId(), _model);
-			}
-
-			if (targetFactoryId >= 0)
-			{
-				Factory* targetFactory = _model->GetFactory(targetFactoryId);
-				cout << "MOVE " << selectedFactory->GetId() << " " << targetFactory->GetId() << " " << selectedFactory->GetNumCyborgs() - 10
-						<< endl;
-				continue;
-			}
-		}
-
-		cout << "WAIT" << endl;
+		if (!gaveOrder)
+			cout << "WAIT" << endl;
+		else
+			cout << endl;
 
 		//************************************************************
 		// cleaning up
