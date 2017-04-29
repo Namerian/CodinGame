@@ -11,9 +11,73 @@
 #include <vector>
 #include <algorithm>
 #include <map>
+#include <queue>
 
 using namespace std;
 
+const int MAX_DISTANCE = 21;
+
+//################################################################################
+//################################################################################
+// NAMESPACE UTILITIES
+//################################################################################
+//################################################################################
+namespace utilities
+{
+
+template<typename T, typename priority_t>
+class PriorityQueue
+{
+	typedef pair<priority_t, T> element;
+
+	struct PriorityCompare
+	{
+		bool operator()(const element& lhs, const element& rhs)
+		{
+			return lhs.first < rhs.first;
+		}
+	};
+
+public:
+	inline bool Empty() const
+	{
+		return elements.empty();
+	}
+
+	inline void Push(T item, priority_t priority)
+	{
+		elements.emplace(priority, item);
+	}
+
+	inline priority_t Pop(T& item)
+	{
+		element e = elements.top();
+		priority_t p = e.first;
+		item = e.second;
+		elements.pop();
+		return p;
+	}
+
+	inline void Clear()
+	{
+		while (!elements.empty())
+		{
+			elements.pop();
+		}
+	}
+
+private:
+	priority_queue<element, vector<element>, PriorityCompare> elements;
+};
+
+}
+using namespace utilities;
+
+//################################################################################
+//################################################################################
+// NAMESPACE MODEL
+//################################################################################
+//################################################################################
 namespace model
 {
 
@@ -86,6 +150,31 @@ private:
 		_numCyborgs = numCyborgs;
 		_timeRemaining = timeRemaining;
 	}
+
+	int GetOwner()
+	{
+		return _owner;
+	}
+
+	int GetOriginId()
+	{
+		return _originId;
+	}
+
+	int GetDestinationId()
+	{
+		return _destinationId;
+	}
+
+	int GetNumCyborgs()
+	{
+		return _numCyborgs;
+	}
+
+	int GetTimeRemaining()
+	{
+		return _timeRemaining;
+	}
 };
 
 class Model
@@ -105,8 +194,13 @@ public:
 		for (int i = 0; i < _numFactories; i++)
 		{
 			_distanceMatrix.at(i).resize(_numFactories);
-			_factories.emplace_back(i);
+			_factories.push_back(i);
 		}
+	}
+
+	int GetNumFactories() const
+	{
+		return _numFactories;
 	}
 
 	void SetDistance(int factory1, int factory2, int distance)
@@ -115,9 +209,28 @@ public:
 		_distanceMatrix.at(factory2).at(factory1) = distance;
 	}
 
-	void AddTroop(int owner, int originId, int destinationId, int numCyborgs, int timeRemaining)
-	{
-		_troops.emplace_back(owner, originId, destinationId, numCyborgs, timeRemaining);
+	int GetDistance(int factory1, int factory2) const
+			{
+		return _distanceMatrix.at(factory1).at(factory2);
+	}
+
+	float GetAverageDistance(int targetFactoryId, int owner) const
+			{
+		int totalDistance = 0;
+		int amountDistances = 0;
+
+		for (int factoryId = 0; factoryId < _numFactories; factoryId++)
+		{
+			Factory factory = _factories.at(factoryId);
+
+			if (factory.GetId() != targetFactoryId && factory.GetOwner() == owner)
+			{
+				totalDistance += GetDistance(targetFactoryId, factory.GetId());
+				amountDistances++;
+			}
+		}
+
+		return totalDistance / (float) max(1, amountDistances);
 	}
 
 	void CleanUp()
@@ -145,19 +258,191 @@ public:
 		return result;
 	}
 
-	int GetDistance(int factory1, int factory2)
+	void AddTroop(int owner, int originId, int destinationId, int numCyborgs, int timeRemaining)
 	{
-		return _distanceMatrix.at(factory1).at(factory2);
+		_troops.emplace_back(owner, originId, destinationId, numCyborgs, timeRemaining);
 	}
 
-	int GetNumFactories()
-	{
-		return _numFactories;
+	vector<Troop> GetTroops(int targetFactoryId) const
+			{
+		vector<Troop> result;
+
+		for (unsigned int troopIndex = 0; troopIndex < _troops.size(); troopIndex++)
+		{
+			Troop currentTroop = _troops.at(troopIndex);
+
+			if (currentTroop.GetDestinationId() == targetFactoryId)
+			{
+				result.emplace_back(currentTroop);
+			}
+		}
+
+		return result;
 	}
 };
 
 }
 using namespace model;
+
+//################################################################################
+//################################################################################
+// "DECISION MAKING"
+//################################################################################
+//################################################################################
+namespace decisions
+{
+
+class Objective
+{
+private:
+	int _targetFactory;
+	int _amountCyborgsNeeded;
+	int _priority;
+
+public:
+	Objective(int targetFactory, int amountCyborgsNeeded, int priority)
+	{
+		_targetFactory = targetFactory;
+		_amountCyborgsNeeded = amountCyborgsNeeded;
+		_priority = priority;
+	}
+
+	int GetTargetFactory()
+	{
+		return _targetFactory;
+	}
+
+	int GetAmountCyborgsNeeded()
+	{
+		return _amountCyborgsNeeded;
+	}
+
+	int GetPriority()
+	{
+		return _priority;
+	}
+};
+
+class Bot
+{
+//variables
+private:
+	PriorityQueue<Objective, float> _objectives;
+	vector<int> _availableCyborgs;
+
+//public methods
+public:
+	string ComputeMoves(Model* model)
+	{
+		_objectives.Clear();
+		_availableCyborgs = vector<int>(model->GetNumFactories());
+
+		EvaluateFactories(model);
+
+		return nullptr;
+	}
+
+//private methods
+private:
+	void EvaluateFactories(Model* model)
+	{
+		for (int factoryId = 0; factoryId < model->GetNumFactories(); factoryId++)
+		{
+			Factory* currentFactory = model->GetFactory(factoryId);
+			vector<Troop> incomingTroops = model->GetTroops(factoryId);
+
+			if (currentFactory->GetOwner() == 1) //owned factory
+			{
+				vector<int> incomingDeltas = vector<int>(MAX_DISTANCE);
+
+				for (unsigned int troopIndex = 0; troopIndex < incomingTroops.size(); troopIndex++)
+				{
+					Troop troop = incomingTroops.at(troopIndex);
+
+					if (troop.GetOwner() == 1)
+					{
+						incomingDeltas.at(troop.GetTimeRemaining()) += troop.GetNumCyborgs();
+					}
+					else if (troop.GetOwner() == -1)
+					{
+						incomingDeltas.at(troop.GetTimeRemaining()) -= troop.GetNumCyborgs();
+					}
+				}
+
+				int amountCyborgs = currentFactory->GetNumCyborgs();
+
+				for (int turn = 0; turn < MAX_DISTANCE; turn++)
+				{
+					if (amountCyborgs >= 0)
+					{
+						amountCyborgs += currentFactory->GetProduction();
+					}
+					else
+					{
+						amountCyborgs += currentFactory->GetProduction();
+					}
+
+					amountCyborgs += incomingDeltas.at(turn);
+
+					if (amountCyborgs < 0)
+					{
+						float priority = 10;
+
+						priority += 30 * (1 - (MAX_DISTANCE / (float) max(1.0f, model->GetAverageDistance(factoryId, 1))));
+
+						if (currentFactory->GetProduction() > 0)
+						{
+							priority += 30;
+						}
+
+						priority += 30 * (MAX_DISTANCE / (float) max(1, turn));
+
+						int reinforcementsNeeded = abs(amountCyborgs) + 1;
+
+						_objectives.Push(Objective(factoryId, reinforcementsNeeded, priority), priority);
+
+						break;
+					}
+				}
+			}
+			else //factory controlled by neutral or enemy
+			{
+				int amountCyborgs = -currentFactory->GetNumCyborgs();
+
+				for (unsigned int troopIndex = 0; troopIndex < incomingTroops.size(); troopIndex++)
+				{
+					Troop troop = incomingTroops.at(troopIndex);
+
+					if (troop.GetOwner() == 1)
+					{
+						amountCyborgs += troop.GetNumCyborgs();
+					}
+					else if (troop.GetOwner() == -1)
+					{
+						amountCyborgs -= troop.GetNumCyborgs();
+					}
+				}
+
+				if (amountCyborgs < 0)
+				{
+					float priority = 30 * (1 - (MAX_DISTANCE / (float) max(1.0f, model->GetAverageDistance(factoryId, 1))));
+
+					if (currentFactory->GetProduction() > 0)
+					{
+						priority += 30;
+					}
+
+					int cyborgsNeeded = abs(amountCyborgs) + 1;
+
+					_objectives.Push(Objective(factoryId, cyborgsNeeded, priority), priority);
+				}
+			}
+		}
+	}
+};
+
+}
+using namespace decisions;
 
 //################################################################################
 //################################################################################
