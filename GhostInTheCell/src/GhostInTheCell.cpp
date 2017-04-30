@@ -17,7 +17,17 @@
 using namespace std;
 
 const int MAX_DISTANCE = 20;
+
 const int GARRISON_MODIFIER = 2;
+
+const int ATTACK_PRODUCTION_SCORE = 40;
+const int ATTACK_ENEMIES_SCORE = 30;
+const int ATTACK_NEUTRAL_SCORE = 10;
+const int ATTACK_DISTANCE_SCORE = 20;
+
+const int DEFENSE_PRODUCTION_SCORE = 40;
+const int DEFENSE_URGENCY_SCORE = 40;
+const int DEFENSE_DISTANCE_SCORE = 20;
 
 //################################################################################
 //################################################################################
@@ -534,6 +544,7 @@ private:
 
 			if (currentFactory.GetOwner() == 1) //owned factory
 			{
+				cerr << "A" << endl;
 				if (CreateReinforceObjective(model, objective, currentFactory, incomingTroops, availableCyborgs))
 				{
 					queue.Push(objective, objective.GetPriority());
@@ -542,12 +553,14 @@ private:
 			}
 			else //factory controlled by neutral or enemy
 			{
+				cerr << "B" << endl;
 				if (CreateAttackObjective(model, objective, currentFactory, incomingTroops))
 				{
 					queue.Push(objective, objective.GetPriority());
 					numCreatedObjectives++;
 				}
 			}
+			cerr << "C" << endl;
 		}
 
 		int availableFactories = 0;
@@ -565,7 +578,7 @@ private:
 
 		int numSelectedObjectives = 0;
 
-		if (availableFactories > 0)
+		if (availableFactories > 0 && !queue.Empty())
 		{
 			do
 			{
@@ -639,51 +652,71 @@ private:
 
 		if (neededReinforcements > 0)
 		{
-			//10 points for base priority
-			float priority = 10;
+			float priority = 0;
 
-			//30 points for the distance, closer = more score
-			float averageDistance = model->GetAverageDistance(targetFactory.GetId(), 1, 1);
+			//points for the distance, closer = more score
+			vector<int> sortedFactories = model->SortFactoriesByDistance(targetFactory.GetId(), 1);
+			int distance = MAX_DISTANCE;
 
-			if (averageDistance == 0)
+			if (sortedFactories.size() > 0)
 			{
-				averageDistance = model->GetAverageDistance(targetFactory.GetId(), 1, 0);
+				model->GetDistance(targetFactory.GetId(), sortedFactories.at(0));
 			}
 
-			float distanceScore = 30 * (1.0f - (averageDistance / (float) MAX_DISTANCE));
+			float distanceScore = DEFENSE_DISTANCE_SCORE * (1.0f - (distance / (float) MAX_DISTANCE));
 			priority += distanceScore;
 
-			//up to 20 points if the target has production
+			//points if the target has production
 			switch (targetFactory.GetProduction())
 			{
+			case 0:
+				priority -= DEFENSE_PRODUCTION_SCORE;
+				break;
 			case 1:
-				priority += 10;
+				priority += DEFENSE_PRODUCTION_SCORE * 0.2f;
 				break;
 			case 2:
-				priority += 15;
+				priority += DEFENSE_PRODUCTION_SCORE * 0.6f;
 				break;
 			case 3:
-				priority += 20;
+				priority += DEFENSE_PRODUCTION_SCORE;
 				break;
 			}
 
-			//40 points for the urgency
-			priority += 40 * (1 - ((float) firstEmergency / (float) MAX_DISTANCE));
+			//points for the urgency
+			priority += DEFENSE_URGENCY_SCORE * (1 - ((float) firstEmergency / (float) MAX_DISTANCE));
 
 			int objectiveId = targetFactory.GetId() * 100;
 
 			objective = Objective(objectiveId, targetFactory.GetId(), neededReinforcements, priority);
 
+			availableCyborgs.at(targetFactory.GetId()) = 0;
+
 			return true;
 		}
-		else //this code is only called if no objective is created
-		{
-			availableCyborgs.at(targetFactory.GetId()) = min(
-					targetFactory.GetNumCyborgs(),
-					max(0, amountCyborgs - (1 + targetFactory.GetProduction() * GARRISON_MODIFIER)));
 
-			return false;
+		int incomingEnemies = 0;
+		int lastIncomingTurn = 0;
+
+		for (unsigned int i = 0; i < incomingTroops.size(); i++)
+		{
+			if (incomingTroops.at(i).GetOwner() == -1)
+			{
+				incomingEnemies += incomingTroops.at(i).GetNumCyborgs();
+
+				if (incomingTroops.at(i).GetTimeRemaining() > lastIncomingTurn)
+				{
+					lastIncomingTurn = incomingTroops.at(i).GetTimeRemaining();
+				}
+			}
 		}
+
+		int num = targetFactory.GetNumCyborgs() + targetFactory.GetProduction() * lastIncomingTurn - incomingEnemies - 1
+				- targetFactory.GetProduction() * GARRISON_MODIFIER;
+
+		availableCyborgs.at(targetFactory.GetId()) = min(targetFactory.GetNumCyborgs(), max(0, num));
+
+		return false;
 	}
 
 	/**
@@ -721,53 +754,50 @@ private:
 		{
 			float priority = 0;
 
-			//30 points for the distance, closer = more score
-			float averageDistance = model->GetAverageDistance(targetFactory.GetId(), 1, 1);
+			//points for the distance, closer = more score
+			vector<int> sortedFactories = model->SortFactoriesByDistance(targetFactory.GetId(), 1);
+			int distance = MAX_DISTANCE;
 
-			if (averageDistance == 0)
+			if (sortedFactories.size() > 0)
 			{
-				averageDistance = model->GetAverageDistance(targetFactory.GetId(), 1, 0);
+				model->GetDistance(targetFactory.GetId(), sortedFactories.at(0));
 			}
 
-			float distanceScore = 30 * (1.0f - (averageDistance / (float) MAX_DISTANCE));
-			//cerr << "attack distance score: targetId=" << currentFactoryId << " score=" << distanceScore << endl;
+			float distanceScore = ATTACK_DISTANCE_SCORE * (1.0f - (distance / (float) MAX_DISTANCE));
 			priority += distanceScore;
 
-			//up to 20 points for target production
+			//points for target production
 			switch (targetFactory.GetProduction())
 			{
 			case 0:
-				priority -= 10;
+				priority -= ATTACK_PRODUCTION_SCORE;
 				break;
 			case 1:
-				priority += 10;
+				priority += ATTACK_PRODUCTION_SCORE * 0.2f;
 				break;
 			case 2:
-				priority += 15;
+				priority += ATTACK_PRODUCTION_SCORE * 0.6f;
 				break;
 			case 3:
-				priority += 20;
+				priority += ATTACK_PRODUCTION_SCORE;
 				break;
 			}
 
-			//+-30 points for the amount of enemies present
-			priority += 60 * ((1 - min(targetFactory.GetNumCyborgs() / 30.0f, 1.0f)) - 0.5f);
+			//points for the amount of enemies present
+			priority += (2 * ATTACK_ENEMIES_SCORE) * ((1 - min(targetFactory.GetNumCyborgs() / 30.0f, 1.0f)) - 0.5f);
 
-			//up to 20 points if the target is neutral
+			//points if the target is neutral
 			if (targetFactory.GetOwner() == 0)
 			{
 				float neutralScore = 0;
 
 				switch (targetFactory.GetProduction())
 				{
-				case 1:
-					neutralScore = 10;
-					break;
 				case 2:
-					neutralScore = 15;
+					neutralScore = ATTACK_NEUTRAL_SCORE * 0.5f;
 					break;
 				case 3:
-					neutralScore = 20;
+					neutralScore = ATTACK_NEUTRAL_SCORE;
 					break;
 				}
 
@@ -779,17 +809,12 @@ private:
 				priority += neutralScore;
 			}
 
-			//priority *= 0.8f;
-			//priority += 0.2f * _previousAttackPriorities.at(currentFactoryId);
-
 			int cyborgsNeeded = GARRISON_MODIFIER * targetFactory.GetProduction() - amountCyborgs + 1;
 			int objectiveId = targetFactory.GetId() * 100;
 
 			objective = Objective(objectiveId, targetFactory.GetId(), cyborgsNeeded, priority);
 
 			return true;
-
-			//_previousAttackPriorities.at(currentFactoryId) = priority;
 		}
 
 		return false;
