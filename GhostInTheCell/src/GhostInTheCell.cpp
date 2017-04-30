@@ -16,7 +16,7 @@
 using namespace std;
 
 const int MAX_DISTANCE = 20;
-const int GARRISON_MODIFIER = 3;
+const int GARRISON_MODIFIER = 2;
 
 //################################################################################
 //################################################################################
@@ -27,7 +27,7 @@ namespace utilities
 {
 
 template<typename T, typename priority_t>
-class PriorityQueue
+class PriorityQueueMax
 {
 	typedef pair<priority_t, T> element;
 
@@ -227,16 +227,17 @@ public:
 		return _distanceMatrix.at(factory1).at(factory2);
 	}
 
-	float GetAverageDistance(int targetFactoryId, int owner) const
+	float GetAverageDistance(int targetFactoryId, int owner, int minProduction = 0) const
 			{
 		int totalDistance = 0;
 		int amountDistances = 0;
+		vector<Factory> ownedFactories = GetOwnedFactories(owner);
 
-		for (int factoryId = 0; factoryId < _numFactories; factoryId++)
+		for (unsigned int i = 0; i < ownedFactories.size(); i++)
 		{
-			Factory factory = _factories.at(factoryId);
+			Factory factory = ownedFactories.at(i);
 
-			if (factory.GetId() != targetFactoryId && factory.GetOwner() == owner)
+			if (factory.GetId() != targetFactoryId && factory.GetProduction() >= minProduction)
 			{
 				totalDistance += GetDistance(targetFactoryId, factory.GetId());
 				amountDistances++;
@@ -253,13 +254,13 @@ public:
 
 		for (unsigned int i = 0; i < ownedFactories.size(); i++)
 		{
-			if (ownedFactories.at(i).GetId() != originFactoryId && ownedFactories.at(i).GetOwner() == owner)
+			if (ownedFactories.at(i).GetId() != originFactoryId)
 			{
 				result.push_back(ownedFactories.at(i).GetId());
 			}
 		}
 
-		if (result.size() == 1)
+		if (result.size() <= 1)
 		{
 			return result;
 		}
@@ -269,7 +270,7 @@ public:
 		{
 			switched = false;
 
-			for (unsigned int i = 0; i < result.size() - 2; i++)
+			for (unsigned int i = 0; i < result.size() - 1; i++)
 			{
 				if (GetDistance(originFactoryId, result.at(i)) > GetDistance(originFactoryId, result.at(i + 1)))
 				{
@@ -348,19 +349,31 @@ using namespace model;
 namespace decisions
 {
 
+/**
+ * pair<objectiveId, originFactoryId>
+ */
+typedef pair<int, int> assignment;
+
 class Objective
 {
 private:
+	int _id;
 	int _targetFactory;
 	int _amountCyborgsNeeded;
 	int _priority;
 
 public:
-	Objective(int targetFactory, int amountCyborgsNeeded, int priority)
+	Objective(int id, int targetFactory, int amountCyborgsNeeded, int priority)
 	{
+		_id = id;
 		_targetFactory = targetFactory;
 		_amountCyborgsNeeded = amountCyborgsNeeded;
 		_priority = priority;
+	}
+
+	int GetId() const
+	{
+		return _id;
 	}
 
 	int GetTargetFactory() const
@@ -383,213 +396,569 @@ class Bot
 {
 //variables
 private:
+	int _numAvailBombs = 2;
+	vector<int> _bombTargets;
+	int _currentTurn = 0;
+	vector<float> _previousAttackPriorities;
 
 //public methods
 public:
 	string ComputeMoves(const Model* model)
 	{
-		PriorityQueue<Objective, float> objectives;
+		_currentTurn++;
+
+		if (_previousAttackPriorities.size() == 0)
+		{
+			_previousAttackPriorities = vector<float>(model->GetNumFactories());
+		}
+
+		vector<Objective> objectives;
 		vector<int> availableCyborgs = vector<int>(model->GetNumFactories());
 
 		EvaluateFactories(model, objectives, availableCyborgs);
 
-		return AssignTroops(model, objectives, availableCyborgs);
+		string bombCommand = LaunchBombs(model);
+		string moveCommands = AssignTroops(model, objectives, availableCyborgs);
+
+		if (bombCommand != "" && moveCommands != "")
+		{
+			bombCommand += ";";
+		}
+
+		return bombCommand + moveCommands;
 	}
 
 //private methods
 private:
-	void EvaluateFactories(const Model* model, PriorityQueue<Objective, float>& objectives, vector<int>& availableCyborgs)
+	/**
+	 * Loops through all Factories and creates Objectives.
+	 *
+	 */
+	void EvaluateFactories(const Model* model, vector<Objective>& objectives, vector<int>& availableCyborgs)
 	{
-		for (int factoryId = 0; factoryId < model->GetNumFactories(); factoryId++)
+		for (int currentFactoryId = 0; currentFactoryId < model->GetNumFactories(); currentFactoryId++)
 		{
-			Factory currentFactory = model->GetFactory(factoryId);
-			vector<Troop> incomingTroops = model->GetTroops(factoryId);
+			Factory currentFactory = model->GetFactory(currentFactoryId);
+			vector<Troop> incomingTroops = model->GetTroops(currentFactoryId);
 
 			if (currentFactory.GetOwner() == 1) //owned factory
 			{
-				vector<int> incomingDeltas = vector<int>(MAX_DISTANCE);
-
-				for (unsigned int troopIndex = 0; troopIndex < incomingTroops.size(); troopIndex++)
-				{
-					Troop troop = incomingTroops.at(troopIndex);
-
-					if (troop.GetOwner() == 1)
-					{
-						incomingDeltas.at(troop.GetTimeRemaining()) += troop.GetNumCyborgs();
-					}
-					else if (troop.GetOwner() == -1)
-					{
-						incomingDeltas.at(troop.GetTimeRemaining()) -= troop.GetNumCyborgs();
-					}
-				}
-
-				int amountCyborgs = currentFactory.GetNumCyborgs();
-				bool createdCommand = false;
-
-				for (int turn = 0; turn < MAX_DISTANCE; turn++)
-				{
-					if (amountCyborgs >= 0)
-					{
-						amountCyborgs += currentFactory.GetProduction();
-					}
-					else
-					{
-						amountCyborgs += currentFactory.GetProduction();
-					}
-
-					amountCyborgs += incomingDeltas.at(turn);
-
-					if (amountCyborgs <= GARRISON_MODIFIER * currentFactory.GetProduction())
-					{
-						//10 points for base priority
-						float priority = 10;
-
-						//30 points for the distance, closer = more score
-						priority += 30 * (1.0f - ((float) max(1.0f, model->GetAverageDistance(factoryId, 1)) / MAX_DISTANCE));
-
-						//30 points if the target has production
-						if (currentFactory.GetProduction() > 0)
-						{
-							priority += 30;
-						}
-
-						//30 points for the urgency
-						priority += 30 * (1 - ((float) max(1, turn) / MAX_DISTANCE));
-
-						int reinforcementsNeeded = GARRISON_MODIFIER * currentFactory.GetProduction() - amountCyborgs + 1;
-
-						objectives.Push(Objective(factoryId, reinforcementsNeeded, priority), priority);
-						createdCommand = true;
-
-						break;
-					}
-				}
-
-				//this code is only called if no objective is created
-				if (!createdCommand)
-				{
-					availableCyborgs.at(factoryId) =
-							min(
-									currentFactory.GetNumCyborgs(),
-									max(0, amountCyborgs - (1 + currentFactory.GetProduction() * GARRISON_MODIFIER)));
-				}
+				CreateReinforceObjectives(model, objectives, currentFactory, incomingTroops, availableCyborgs);
 			}
 			else //factory controlled by neutral or enemy
 			{
-				int amountCyborgs = -currentFactory.GetNumCyborgs();
-
-				for (unsigned int troopIndex = 0; troopIndex < incomingTroops.size(); troopIndex++)
-				{
-					Troop troop = incomingTroops.at(troopIndex);
-
-					if (troop.GetOwner() == 1)
-					{
-						amountCyborgs += troop.GetNumCyborgs();
-					}
-					else if (troop.GetOwner() == -1)
-					{
-						amountCyborgs -= troop.GetNumCyborgs();
-					}
-				}
-
-				if (amountCyborgs <= GARRISON_MODIFIER * currentFactory.GetProduction())
-				{
-					float priority = 0;
-
-					//30 points for the distance, closer = more score
-					priority += 30 * (1.0f - ((float) max(1.0f, model->GetAverageDistance(factoryId, 1)) / MAX_DISTANCE));
-
-					//20 points if the target has production
-					if (currentFactory.GetProduction() > 0)
-					{
-						priority += 20;
-					}
-
-					//+-30 points for the amount of enemies present
-					priority += 60 * ((1 - min(currentFactory.GetNumCyborgs() / 30.0f, 1.0f)) - 0.5f);
-
-					//20 points if the target is neutral
-					if (currentFactory.GetOwner() == 0)
-					{
-						priority += 20;
-					}
-
-					int cyborgsNeeded = GARRISON_MODIFIER * currentFactory.GetProduction() - amountCyborgs + 1;
-
-					objectives.Push(Objective(factoryId, cyborgsNeeded, priority), priority);
-				}
+				CreateAttackObjective(model, objectives, currentFactory, incomingTroops);
 			}
 		}
 	}
 
-	string AssignTroops(const Model* model, PriorityQueue<Objective, float>& objectives, vector<int>& availableCyborgs)
+	/**
+	 * Evaluates an owned Factory:
+	 * - creates reinforcement Objectives if necessary
+	 * - computes the amount of available Cyborgs for attacks
+	 *
+	 */
+	void CreateReinforceObjectives(const Model* model, vector<Objective>& objectives, const Factory& targetFactory,
+			const vector<Troop>& incomingTroops, vector<int>& availableCyborgs)
 	{
-		cerr << "available cyborgs: ";
-		for (unsigned int i = 0; i < availableCyborgs.size(); i++)
-		{
-			cerr << to_string(i) << "=" << to_string(availableCyborgs.at(i)) << " ";
-		}
-		cerr << endl;
+		vector<int> incomingDeltas = vector<int>(MAX_DISTANCE);
 
-		string commands = "";
-		int totalAvailableTroops = 0;
-
-		for (unsigned int i = 0; i < availableCyborgs.size(); i++)
+		for (unsigned int troopIndex = 0; troopIndex < incomingTroops.size(); troopIndex++)
 		{
-			totalAvailableTroops += availableCyborgs.at(i);
-		}
+			Troop troop = incomingTroops.at(troopIndex);
 
-		while (totalAvailableTroops > 0)
-		{
-			if (objectives.Empty())
+			if (troop.GetOwner() == 1)
 			{
+				incomingDeltas.at(troop.GetTimeRemaining()) += troop.GetNumCyborgs();
+			}
+			else if (troop.GetOwner() == -1)
+			{
+				incomingDeltas.at(troop.GetTimeRemaining()) -= troop.GetNumCyborgs();
+			}
+		}
+
+		int amountCyborgs = targetFactory.GetNumCyborgs();
+		bool createdCommand = false;
+
+		for (int turn = 0; turn < MAX_DISTANCE; turn++)
+		{
+			if (amountCyborgs >= 0)
+			{
+				amountCyborgs += targetFactory.GetProduction();
+			}
+			else
+			{
+				amountCyborgs -= targetFactory.GetProduction();
+			}
+
+			amountCyborgs += incomingDeltas.at(turn);
+
+			if (amountCyborgs <= GARRISON_MODIFIER * targetFactory.GetProduction())
+			{
+				//10 points for base priority
+				float priority = 10;
+
+				//30 points for the distance, closer = more score
+				float averageDistance = model->GetAverageDistance(targetFactory.GetId(), 1, 1);
+
+				if (averageDistance == 0)
+				{
+					averageDistance = model->GetAverageDistance(targetFactory.GetId(), 1, 0);
+				}
+
+				float distanceScore = 30 * (1.0f - (averageDistance / (float) MAX_DISTANCE));
+				priority += distanceScore;
+
+				//up to 20 points if the target has production
+				switch (targetFactory.GetProduction())
+				{
+				case 1:
+					priority += 10;
+					break;
+				case 2:
+					priority += 15;
+					break;
+				case 3:
+					priority += 20;
+					break;
+				}
+
+				//40 points for the urgency
+				priority += 40 * (1 - ((float) turn / (float) MAX_DISTANCE));
+
+				int reinforcementsNeeded = GARRISON_MODIFIER * targetFactory.GetProduction() - amountCyborgs + 1;
+				int objectiveId = targetFactory.GetId() * 100 + turn;
+
+				objectives.emplace_back(objectiveId, targetFactory.GetId(), reinforcementsNeeded, priority);
+				createdCommand = true;
+			}
+		}
+
+		//this code is only called if no objective is created
+		if (!createdCommand)
+		{
+			availableCyborgs.at(targetFactory.GetId()) = min(
+					targetFactory.GetNumCyborgs(),
+					max(0, amountCyborgs - (1 + targetFactory.GetProduction() * GARRISON_MODIFIER)));
+		}
+	}
+
+	/**
+	 * Evaluates an enemy Factory and creates an attack objective.
+	 *
+	 */
+	void CreateAttackObjective(const Model* model, vector<Objective>& objectives, const Factory& targetFactory,
+			const vector<Troop>& incomingTroops)
+	{
+		int amountCyborgs = -targetFactory.GetNumCyborgs();
+
+		for (unsigned int troopIndex = 0; troopIndex < incomingTroops.size(); troopIndex++)
+		{
+			Troop troop = incomingTroops.at(troopIndex);
+
+			if (troop.GetOwner() == 1)
+			{
+				amountCyborgs += troop.GetNumCyborgs();
+			}
+			else if (troop.GetOwner() == -1)
+			{
+				amountCyborgs -= troop.GetNumCyborgs();
+			}
+		}
+
+		vector<int> sortedFactories = model->SortFactoriesByDistance(targetFactory.GetId(), 1);
+
+		if (sortedFactories.size() > 0 && targetFactory.GetOwner() == -1)
+		{
+			amountCyborgs -= targetFactory.GetProduction() * 2
+					* model->GetDistance(targetFactory.GetId(), sortedFactories.at(sortedFactories.size() - 1));
+		}
+
+		if (amountCyborgs <= GARRISON_MODIFIER * targetFactory.GetProduction())
+		{
+			float priority = 0;
+
+			//30 points for the distance, closer = more score
+			float averageDistance = model->GetAverageDistance(targetFactory.GetId(), 1, 1);
+
+			if (averageDistance == 0)
+			{
+				averageDistance = model->GetAverageDistance(targetFactory.GetId(), 1, 0);
+			}
+
+			float distanceScore = 30 * (1.0f - (averageDistance / (float) MAX_DISTANCE));
+			//cerr << "attack distance score: targetId=" << currentFactoryId << " score=" << distanceScore << endl;
+			priority += distanceScore;
+
+			//up to 20 points for target production
+			switch (targetFactory.GetProduction())
+			{
+			case 0:
+				priority -= 10;
+				break;
+			case 1:
+				priority += 10;
+				break;
+			case 2:
+				priority += 15;
+				break;
+			case 3:
+				priority += 20;
 				break;
 			}
 
-			Objective currentObjective = objectives.Pop();
-			vector<int> sortedFactories = model->SortFactoriesByDistance(currentObjective.GetTargetFactory(), 1);
+			//+-30 points for the amount of enemies present
+			priority += 60 * ((1 - min(targetFactory.GetNumCyborgs() / 30.0f, 1.0f)) - 0.5f);
 
-			cerr << "sorted factories: ";
-			for (unsigned int i = 0; i < sortedFactories.size(); i++)
+			//up to 20 points if the target is neutral
+			if (targetFactory.GetOwner() == 0)
 			{
-				cerr << to_string(sortedFactories.at(i)) << " ";
-			}
-			cerr << "origin: " << to_string(currentObjective.GetTargetFactory()) << endl;
+				float neutralScore = 0;
 
-			int sentCyborgs = 0;
-
-			for (unsigned int i = 0; i < sortedFactories.size(); i++)
-			{
-				int factoryId = sortedFactories.at(i);
-
-				if (availableCyborgs.at(factoryId) > 0)
+				switch (targetFactory.GetProduction())
 				{
-					int amountCyborgs = min(availableCyborgs.at(factoryId), currentObjective.GetAmountCyborgsNeeded() - sentCyborgs);
+				case 1:
+					neutralScore = 10;
+					break;
+				case 2:
+					neutralScore = 15;
+					break;
+				case 3:
+					neutralScore = 20;
+					break;
+				}
 
-					availableCyborgs.at(factoryId) -= amountCyborgs;
-					sentCyborgs += amountCyborgs;
-					totalAvailableTroops -= amountCyborgs;
+				if (_currentTurn > 0)
+				{
+					neutralScore *= 1.0f - (_currentTurn / 20.0f);
+				}
 
-					if (commands != "")
-					{
-						commands += ';';
-					}
+				priority += neutralScore;
+			}
 
-					commands.append(
-							"MOVE " + to_string(factoryId) + " " + to_string(currentObjective.GetTargetFactory()) + " "
-									+ to_string(amountCyborgs));
+			//priority *= 0.8f;
+			//priority += 0.2f * _previousAttackPriorities.at(currentFactoryId);
 
-					if (sentCyborgs == currentObjective.GetAmountCyborgsNeeded() || totalAvailableTroops == 0)
-					{
-						break;
-					}
+			int cyborgsNeeded = GARRISON_MODIFIER * targetFactory.GetProduction() - amountCyborgs + 1;
+			int objectiveId = targetFactory.GetId() * 100;
+
+			objectives.emplace_back(objectiveId, targetFactory.GetId(), cyborgsNeeded, priority);
+
+			//_previousAttackPriorities.at(currentFactoryId) = priority;
+		}
+	}
+
+	/**
+	 * Assigns available Cyborgs to the Objectives.
+	 *
+	 */
+//	string AssignTroops(const Model* model, PriorityQueueMax<Objective, float>& objectives, vector<int>& availableCyborgs)
+//	{
+//		//TODO
+//		/*cerr << "available cyborgs: ";
+//		 for (unsigned int i = 0; i < availableCyborgs.size(); i++)
+//		 {
+//		 cerr << to_string(i) << "=" << to_string(availableCyborgs.at(i)) << " ";
+//		 }
+//		 cerr << endl;*/
+//
+//		string commands = "";
+//		int totalAvailableTroops = 0;
+//
+//		for (unsigned int i = 0; i < availableCyborgs.size(); i++)
+//		{
+//			totalAvailableTroops += availableCyborgs.at(i);
+//		}
+//
+//		while (totalAvailableTroops > 0)
+//		{
+//			if (objectives.Empty())
+//			{
+//				break;
+//			}
+//
+//			Objective currentObjective = objectives.Pop();
+//			vector<int> sortedFactories = model->SortFactoriesByDistance(currentObjective.GetTargetFactory(), 1);
+//
+//			//TODO
+//			/*cerr << "sorted factories: ";
+//			 for (unsigned int i = 0; i < sortedFactories.size(); i++)
+//			 {
+//			 cerr << to_string(sortedFactories.at(i)) << " ";
+//			 }
+//			 cerr << "origin: " << to_string(currentObjective.GetTargetFactory()) << endl;*/
+//
+//			int sentCyborgs = 0;
+//
+//			for (unsigned int i = 0; i < sortedFactories.size(); i++)
+//			{
+//				int factoryId = sortedFactories.at(i);
+//
+//				if (availableCyborgs.at(factoryId) > 0)
+//				{
+//					int amountCyborgs = 0;
+//
+//					if (_currentTurn == 1 /*|| objectives.Empty()*/)
+//					{
+//						amountCyborgs = availableCyborgs.at(factoryId);
+//					}
+//					else if (!objectives.Empty())
+//					{
+//						amountCyborgs = min(availableCyborgs.at(factoryId), currentObjective.GetAmountCyborgsNeeded() - sentCyborgs);
+//					}
+//
+//					availableCyborgs.at(factoryId) -= amountCyborgs;
+//					sentCyborgs += amountCyborgs;
+//					totalAvailableTroops -= amountCyborgs;
+//
+//					if (commands != "")
+//					{
+//						commands += ';';
+//					}
+//
+//					commands.append(
+//							"MOVE " + to_string(factoryId) + " " + to_string(currentObjective.GetTargetFactory()) + " "
+//									+ to_string(amountCyborgs));
+//
+//					if (!objectives.Empty() && (sentCyborgs == currentObjective.GetAmountCyborgsNeeded() || totalAvailableTroops == 0))
+//					{
+//						break;
+//					}
+//				}
+//			}
+//		}
+//
+//		return commands;
+//	}
+	/**
+	 * Assigns available Cyborgs to the Objectives.
+	 *
+	 */
+	string AssignTroops(const Model* model, const vector<Objective>& objectives, const vector<int>& availableCyborgs)
+	{
+		cerr << "start assigning troops" << endl;
+
+		string commands = "";
+		vector<Factory> ownedFactories = model->GetOwnedFactories(1);
+		int numAvailableFactories;
+
+		//create pairs
+		vector<assignment> pairs;
+
+		for (unsigned int i = 0; i < ownedFactories.size(); i++)
+		{
+			int factoryId = ownedFactories.at(i).GetId();
+
+			if (availableCyborgs.at(factoryId) > 0)
+			{
+				numAvailableFactories++;
+
+				for (unsigned int j = 0; j < objectives.size(); j++)
+				{
+					pairs.emplace_back(objectives.at(j).GetId(), factoryId);
 				}
 			}
 		}
 
+		cerr << "finished creating pairs: numPairs=" << pairs.size() << endl;
+		//create pair groups
+		vector<vector<int>> pairGroups;
+
+		int n = pairs.size();
+		int r = numAvailableFactories;
+
+		vector<bool> combination(n);
+		fill(combination.begin(), combination.begin() + r, true);
+
+		do
+		{
+			vector<int> group;
+
+			for (int i = 0; i < n; ++i)
+			{
+				if (combination.at(i))
+				{
+					group.push_back(i);
+				}
+			}
+
+			pairGroups.emplace_back(group);
+		}
+		while (prev_permutation(combination.begin(), combination.end()));
+
+		cerr << "finished creating pair groups: numPairGroups="<<pairGroups.size() << endl;
+		//reject invalid pair groups
+		vector<vector<int>> validPairGroups;
+
+		for (unsigned int pairGroupIndex = 0; pairGroupIndex < pairGroups.size(); pairGroupIndex++)
+		{
+			vector<int> usedFactories;
+			bool duplicateUsedFactory = false;
+
+			for (int i = 0; i < r; i++)
+			{
+				int usedFactory = pairs.at(pairGroups.at(pairGroupIndex).at(i)).second;
+
+				if (find(usedFactories.begin(), usedFactories.end(), usedFactory) == usedFactories.end())
+				{
+					usedFactories.push_back(usedFactory);
+				}
+				else
+				{
+					duplicateUsedFactory = true;
+					break;
+				}
+			}
+
+			if (!duplicateUsedFactory)
+			{
+				validPairGroups.emplace_back(pairGroups.at(pairGroupIndex));
+			}
+		}
+
+		cerr << "finished rejecting invalid pair groups" << endl;
+		//evaluate pairGroups
+		PriorityQueueMax<int, float> pairGroupPrioQueue;
+		int numEvaluatedGroups = 0;
+
+		for (unsigned int pairGroupIndex = 0; pairGroupIndex < validPairGroups.size(); pairGroupIndex++)
+		{
+			vector<int> currentPairGroup = validPairGroups.at(pairGroupIndex);
+
+			vector<int> objectiveIds;
+
+			for (unsigned int pairIndex = 0; pairIndex < currentPairGroup.size(); pairIndex++)
+			{
+				int objectiveId = pairs.at(currentPairGroup.at(pairIndex)).first;
+
+				if (find(objectiveIds.begin(), objectiveIds.end(), objectiveId) == objectiveIds.end())
+				{
+					objectiveIds.push_back(objectiveId);
+				}
+			}
+
+			vector<int> assignedCyborgs(objectiveIds.size());
+
+			for (unsigned int pairIndex = 0; pairIndex < currentPairGroup.size(); pairIndex++)
+			{
+				int objectiveId = pairs.at(currentPairGroup.at(pairIndex)).first;
+				int originFactoryId = pairs.at(currentPairGroup.at(pairIndex)).second;
+
+				auto pos = find(objectiveIds.begin(), objectiveIds.end(), objectiveId);
+				int objectiveIdIndex = distance(objectiveIds.begin(), pos);
+
+				if (pos != objectiveIds.end())
+				{
+					assignedCyborgs.at(objectiveIdIndex) += availableCyborgs.at(originFactoryId);
+				}
+			}
+
+			float pairGroupScore;
+
+			for (unsigned int pairIndex = 0; pairIndex < currentPairGroup.size(); pairIndex++)
+			{
+				int objectiveId = pairs.at(currentPairGroup.at(pairIndex)).first;
+				int originFactoryId = pairs.at(currentPairGroup.at(pairIndex)).second;
+
+				Objective objective = objectives.at(objectiveId);
+
+				auto pos = find(objectiveIds.begin(), objectiveIds.end(), objectiveId);
+				int amountCyborgs = assignedCyborgs.at(distance(objectiveIds.begin(), pos));
+
+				int distance = model->GetDistance(originFactoryId, objective.GetTargetFactory());
+
+				pairGroupScore += (objective.GetPriority() * min(1.0f, amountCyborgs / (float) objective.GetAmountCyborgsNeeded()))
+						/ (float) distance;
+			}
+
+			pairGroupPrioQueue.Push(pairGroupIndex, pairGroupScore);
+			numEvaluatedGroups++;
+		}
+
+		cerr << "finished evaluating pair groups: numEvaluatedGroups=" << numEvaluatedGroups << endl;
+		//create commands
+		if (pairGroupPrioQueue.Empty())
+		{
+			return commands;
+		}
+
+		int bestPairGroupIndex = pairGroupPrioQueue.Pop();
+		vector<int> bestPairGroup = validPairGroups.at(bestPairGroupIndex);
+		vector<assignment> bestPairs;
+
+		for (unsigned int bestPairGroupIndex = 0; bestPairGroupIndex < bestPairGroup.size(); bestPairGroupIndex++)
+		{
+			bestPairs.emplace_back(pairs.at(bestPairGroup.at(bestPairGroupIndex)));
+		}
+
+		for (unsigned int bestPairIndex = 0; bestPairIndex < bestPairs.size(); bestPairIndex++)
+		{
+			assignment currentPair = bestPairs.at(bestPairIndex);
+
+			int originFactoryId = currentPair.second;
+			int targetFactoryId = currentPair.first;
+			int amountCyborgs = availableCyborgs.at(originFactoryId);
+
+			if (commands != "")
+			{
+				commands.append(";");
+			}
+
+			commands.append("MOVE " + to_string(originFactoryId) + " " + to_string(targetFactoryId) + " " + to_string(amountCyborgs));
+		}
+
+		cerr << "finished creating commands" << endl;
 		return commands;
 	}
-};
+
+	/**
+	 *
+	 */
+	string LaunchBombs(const Model* model)
+	{
+		string command = "";
+
+		if (_numAvailBombs == 0)
+		{
+			return command;
+		}
+
+		vector<Factory> targets = model->GetOwnedFactories(-1);
+
+		for (unsigned int i = 0; i < targets.size(); i++)
+		{
+			Factory target = targets.at(i);
+
+			if (target.GetProduction() >= 2)
+			{
+				bool alreadyBombed = false;
+
+				for (unsigned int j = 0; j < _bombTargets.size(); j++)
+				{
+					if (_bombTargets.at(j) == target.GetId())
+					{
+						alreadyBombed = true;
+					}
+				}
+
+				vector<int> sourceFactories = model->SortFactoriesByDistance(target.GetId(), 1);
+
+				if (!alreadyBombed)
+				{
+					_bombTargets.push_back(target.GetId());
+					_numAvailBombs--;
+
+					command = "BOMB " + to_string(sourceFactories.at(0)) + " " + to_string(target.GetId());
+
+					break;
+				}
+			}
+		}
+
+		return command;
+	}
+}
+;
 
 }
 using namespace decisions;
@@ -600,70 +969,70 @@ using namespace decisions;
 //################################################################################
 //################################################################################
 
-int SelectHighProductionFactory(int originFactoryId, Model* model, int targetOwner)
-{
-	//int bestProduction = 0;
-	int shortestDistance = 21;
-	int targetFactoryId = -1;
-
-	for (int id = 0; id < model->GetNumFactories(); id++)
-	{
-		if (id != originFactoryId)
-		{
-			Factory currentFactory = model->GetFactory(id);
-
-			if (currentFactory.GetOwner() == targetOwner
-					&& currentFactory.GetProduction() > 0
-					&& model->GetDistance(originFactoryId, currentFactory.GetId()) < shortestDistance)
-			{
-				shortestDistance = model->GetDistance(originFactoryId, currentFactory.GetId());
-				targetFactoryId = currentFactory.GetId();
-
-				/*if (currentFactory->GetProduction() > bestProduction
-				 || (currentFactory->GetProduction() == bestProduction
-				 && model->GetDistance(originFactoryId, currentFactory->GetId()) < shortestDistance))
-				 {
-				 bestProduction = currentFactory->GetProduction();
-				 shortestDistance = model->GetDistance(originFactoryId, currentFactory->GetId());
-				 targetFactoryId = currentFactory->GetId();
-				 }*/
-			}
-		}
-	}
-
-	return targetFactoryId;
-}
-
-int SelectedNearestFactory(int originFactoryId, Model* model)
-{
-	int shortestDistance = 21;
-	int targetFactoryId = -1;
-
-	for (int id = 0; id < model->GetNumFactories(); id++)
-	{
-		if (id != originFactoryId)
-		{
-			Factory currentFactory = model->GetFactory(id);
-
-			if (currentFactory.GetOwner() != 1)
-			{
-				if (model->GetDistance(originFactoryId, currentFactory.GetId()) < shortestDistance)
-				{
-					shortestDistance = model->GetDistance(originFactoryId, currentFactory.GetId());
-					targetFactoryId = currentFactory.GetId();
-				}
-			}
-		}
-	}
-
-	return targetFactoryId;
-}
-
-int ComputeAvailableCyborgs(Factory factory)
-{
-	int garrison = factory.GetProduction() * 5;
-	return max(0, factory.GetNumCyborgs() - garrison);
-}
+//int SelectHighProductionFactory(int originFactoryId, Model* model, int targetOwner)
+//{
+////int bestProduction = 0;
+//	int shortestDistance = 21;
+//	int targetFactoryId = -1;
+//
+//	for (int id = 0; id < model->GetNumFactories(); id++)
+//	{
+//		if (id != originFactoryId)
+//		{
+//			Factory currentFactory = model->GetFactory(id);
+//
+//			if (currentFactory.GetOwner() == targetOwner
+//					&& currentFactory.GetProduction() > 0
+//					&& model->GetDistance(originFactoryId, currentFactory.GetId()) < shortestDistance)
+//			{
+//				shortestDistance = model->GetDistance(originFactoryId, currentFactory.GetId());
+//				targetFactoryId = currentFactory.GetId();
+//
+//				/*if (currentFactory->GetProduction() > bestProduction
+//				 || (currentFactory->GetProduction() == bestProduction
+//				 && model->GetDistance(originFactoryId, currentFactory->GetId()) < shortestDistance))
+//				 {
+//				 bestProduction = currentFactory->GetProduction();
+//				 shortestDistance = model->GetDistance(originFactoryId, currentFactory->GetId());
+//				 targetFactoryId = currentFactory->GetId();
+//				 }*/
+//			}
+//		}
+//	}
+//
+//	return targetFactoryId;
+//}
+//
+//int SelectedNearestFactory(int originFactoryId, Model* model)
+//{
+//	int shortestDistance = 21;
+//	int targetFactoryId = -1;
+//
+//	for (int id = 0; id < model->GetNumFactories(); id++)
+//	{
+//		if (id != originFactoryId)
+//		{
+//			Factory currentFactory = model->GetFactory(id);
+//
+//			if (currentFactory.GetOwner() != 1)
+//			{
+//				if (model->GetDistance(originFactoryId, currentFactory.GetId()) < shortestDistance)
+//				{
+//					shortestDistance = model->GetDistance(originFactoryId, currentFactory.GetId());
+//					targetFactoryId = currentFactory.GetId();
+//				}
+//			}
+//		}
+//	}
+//
+//	return targetFactoryId;
+//}
+//
+//int ComputeAvailableCyborgs(Factory factory)
+//{
+//	int garrison = factory.GetProduction() * 5;
+//	return max(0, factory.GetNumCyborgs() - garrison);
+//}
 
 //################################################################################
 //################################################################################
@@ -728,23 +1097,21 @@ int main()
 			}
 		}
 
-		vector<Factory> fac = _model->GetOwnedFactories(1);
-		cerr << "owned factories: ";
-		for (unsigned int i = 0; i < fac.size(); i++)
-		{
-			cerr << to_string(fac.at(i).GetId()) + " ";
-		}
-		cerr << endl;
+		//TODO
+		/*vector<Factory> fac = _model->GetOwnedFactories(1);
+		 cerr << "owned factories: ";
+		 for (unsigned int i = 0; i < fac.size(); i++)
+		 {
+		 cerr << to_string(fac.at(i).GetId()) + " ";
+		 }
+		 cerr << endl;*/
 
 		//************************************************************
 		//
-
 		// Write an action using cout. DON'T FORGET THE "<< endl"
 		// To debug: cerr << "Debug messages..." << endl;
-
 		// Any valid action, such as "WAIT" or "MOVE source destination cyborgs"
 		//cout << "WAIT" << endl;
-
 		string commands = _bot->ComputeMoves(_model);
 
 		if (commands == "")
