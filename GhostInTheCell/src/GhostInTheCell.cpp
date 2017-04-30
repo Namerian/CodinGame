@@ -16,6 +16,7 @@
 using namespace std;
 
 const int MAX_DISTANCE = 20;
+const int GARRISON_MODIFIER = 3;
 
 //################################################################################
 //################################################################################
@@ -248,12 +249,13 @@ public:
 	vector<int> SortFactoriesByDistance(const int originFactoryId, const int owner) const
 			{
 		vector<int> result;
+		vector<Factory> ownedFactories = GetOwnedFactories(owner);
 
-		for (int i = 0; i < _numFactories; i++)
+		for (unsigned int i = 0; i < ownedFactories.size(); i++)
 		{
-			if (i != originFactoryId && _factories.at(i).GetOwner() == owner)
+			if (ownedFactories.at(i).GetId() != originFactoryId && ownedFactories.at(i).GetOwner() == owner)
 			{
-				result.push_back(i);
+				result.push_back(ownedFactories.at(i).GetId());
 			}
 		}
 
@@ -437,20 +439,24 @@ private:
 
 					amountCyborgs += incomingDeltas.at(turn);
 
-					if (amountCyborgs < 0)
+					if (amountCyborgs <= GARRISON_MODIFIER * currentFactory.GetProduction())
 					{
+						//10 points for base priority
 						float priority = 10;
 
+						//30 points for the distance, closer = more score
 						priority += 30 * (1.0f - ((float) max(1.0f, model->GetAverageDistance(factoryId, 1)) / MAX_DISTANCE));
 
+						//30 points if the target has production
 						if (currentFactory.GetProduction() > 0)
 						{
 							priority += 30;
 						}
 
-						priority += 30 * ((float) max(1, turn) / MAX_DISTANCE);
+						//30 points for the urgency
+						priority += 30 * (1 - ((float) max(1, turn) / MAX_DISTANCE));
 
-						int reinforcementsNeeded = abs(amountCyborgs) + 1;
+						int reinforcementsNeeded = GARRISON_MODIFIER * currentFactory.GetProduction() - amountCyborgs + 1;
 
 						objectives.Push(Objective(factoryId, reinforcementsNeeded, priority), priority);
 						createdCommand = true;
@@ -462,7 +468,10 @@ private:
 				//this code is only called if no objective is created
 				if (!createdCommand)
 				{
-					availableCyborgs.at(factoryId) = max(0, amountCyborgs - (1 + currentFactory.GetProduction() * 3));
+					availableCyborgs.at(factoryId) =
+							min(
+									currentFactory.GetNumCyborgs(),
+									max(0, amountCyborgs - (1 + currentFactory.GetProduction() * GARRISON_MODIFIER)));
 				}
 			}
 			else //factory controlled by neutral or enemy
@@ -483,25 +492,29 @@ private:
 					}
 				}
 
-				if (amountCyborgs <= 2 * currentFactory.GetProduction())
+				if (amountCyborgs <= GARRISON_MODIFIER * currentFactory.GetProduction())
 				{
-					float priority = 30 * (1.0f - ((float) max(1.0f, model->GetAverageDistance(factoryId, 1)) / MAX_DISTANCE));
-					//cerr << "tt " << ((float) max(1.0f, model->GetAverageDistance(factoryId, 1)) / MAX_DISTANCE) << endl;
-					//cerr << "attack distance score = " << priority << endl;
+					float priority = 0;
 
+					//30 points for the distance, closer = more score
+					priority += 30 * (1.0f - ((float) max(1.0f, model->GetAverageDistance(factoryId, 1)) / MAX_DISTANCE));
+
+					//20 points if the target has production
 					if (currentFactory.GetProduction() > 0)
 					{
 						priority += 20;
 					}
 
-					priority += 20 * (min(currentFactory.GetNumCyborgs() / 50.0f, 1.0f) - 0.5f);
+					//+-30 points for the amount of enemies present
+					priority += 60 * ((1 - min(currentFactory.GetNumCyborgs() / 30.0f, 1.0f)) - 0.5f);
 
+					//20 points if the target is neutral
 					if (currentFactory.GetOwner() == 0)
 					{
 						priority += 20;
 					}
 
-					int cyborgsNeeded = abs(amountCyborgs) + 1;
+					int cyborgsNeeded = GARRISON_MODIFIER * currentFactory.GetProduction() - amountCyborgs + 1;
 
 					objectives.Push(Objective(factoryId, cyborgsNeeded, priority), priority);
 				}
@@ -511,6 +524,13 @@ private:
 
 	string AssignTroops(const Model* model, PriorityQueue<Objective, float>& objectives, vector<int>& availableCyborgs)
 	{
+		cerr << "available cyborgs: ";
+		for (unsigned int i = 0; i < availableCyborgs.size(); i++)
+		{
+			cerr << to_string(i) << "=" << to_string(availableCyborgs.at(i)) << " ";
+		}
+		cerr << endl;
+
 		string commands = "";
 		int totalAvailableTroops = 0;
 
@@ -528,6 +548,13 @@ private:
 
 			Objective currentObjective = objectives.Pop();
 			vector<int> sortedFactories = model->SortFactoriesByDistance(currentObjective.GetTargetFactory(), 1);
+
+			cerr << "sorted factories: ";
+			for (unsigned int i = 0; i < sortedFactories.size(); i++)
+			{
+				cerr << to_string(sortedFactories.at(i)) << " ";
+			}
+			cerr << "origin: " << to_string(currentObjective.GetTargetFactory()) << endl;
 
 			int sentCyborgs = 0;
 
@@ -701,6 +728,14 @@ int main()
 			}
 		}
 
+		vector<Factory> fac = _model->GetOwnedFactories(1);
+		cerr << "owned factories: ";
+		for (unsigned int i = 0; i < fac.size(); i++)
+		{
+			cerr << to_string(fac.at(i).GetId()) + " ";
+		}
+		cerr << endl;
+
 		//************************************************************
 		//
 
@@ -720,51 +755,6 @@ int main()
 		{
 			cout << commands << endl;
 		}
-
-		/*vector<Factory> myFactories = _model->GetOwnedFactories(1);
-		 bool gaveOrder = false;
-
-		 for (unsigned int i = 0; i < myFactories.size(); i++)
-		 {
-		 Factory selectedFactory;
-
-		 if (ComputeAvailableCyborgs(myFactories.at(i)) > 0)
-		 {
-		 selectedFactory = myFactories.at(i);
-		 }
-
-		 if (selectedFactory.GetId() >= 0)
-		 {
-		 int targetFactoryId = SelectHighProductionFactory(selectedFactory.GetId(), _model, 0);
-
-		 if (targetFactoryId == -1)
-		 {
-		 SelectHighProductionFactory(selectedFactory.GetId(), _model, -1);
-		 }
-
-		 if (targetFactoryId == -1)
-		 {
-		 targetFactoryId = SelectedNearestFactory(selectedFactory.GetId(), _model);
-		 }
-
-		 if (targetFactoryId >= 0)
-		 {
-		 Factory targetFactory = _model->GetFactory(targetFactoryId);
-
-		 if (gaveOrder)
-		 cout << ";";
-
-		 cout << "MOVE " << selectedFactory.GetId() << " " << targetFactory.GetId() << " "
-		 << ComputeAvailableCyborgs(selectedFactory);
-		 gaveOrder = true;
-		 }
-		 }
-		 }
-
-		 if (!gaveOrder)
-		 cout << "WAIT" << endl;
-		 else
-		 cout << endl;*/
 
 		//************************************************************
 		// cleaning up
