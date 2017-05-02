@@ -25,11 +25,11 @@ const int ATTACK_ENEMIES_SCORE = 10;
 const int ATTACK_NEUTRAL_SCORE = 30;
 const int ATTACK_DISTANCE_SCORE = 40;
 
-const int DEFENSE_PRODUCTION_SCORE = 40;
-const int DEFENSE_URGENCY_SCORE = 40;
+const int DEFENSE_PRODUCTION_SCORE = 50;
+const int DEFENSE_URGENCY_SCORE = 30;
 const int DEFENSE_DISTANCE_SCORE = 20;
 
-const int MAX_NUMBER_COMBINATIONS = 11000;
+const int MAX_NUMBER_COMBINATIONS = 10000;
 
 //################################################################################
 //################################################################################
@@ -129,6 +129,7 @@ private:
 	int _owner = 0;
 	int _numCyborgs = 0;
 	int _production = 0;
+	int _incapacitatedTimer = 0;
 
 public:
 	Factory()
@@ -146,13 +147,15 @@ public:
 		_owner = factory.GetOwner();
 		_numCyborgs = factory.GetNumCyborgs();
 		_production = factory.GetProduction();
+		_incapacitatedTimer = factory.GetIncapacitatedTimer();
 	}
 
-	inline void Update(int owner, int numCyborgs, int production)
+	inline void Update(int owner, int numCyborgs, int production, int incapacitatedTimer)
 	{
 		_owner = owner;
 		_numCyborgs = numCyborgs;
 		_production = production;
+		_incapacitatedTimer = incapacitatedTimer;
 	}
 
 	inline int GetId() const
@@ -174,11 +177,18 @@ public:
 	{
 		return _production;
 	}
+
+	inline int GetIncapacitatedTimer() const
+	{
+		return _incapacitatedTimer;
+	}
 };
 
 class Troop
 {
 private:
+	int _id = -1;
+
 	int _owner = 0;
 	int _originId = -1;
 	int _destinationId = -1;
@@ -190,8 +200,9 @@ public:
 	{
 	}
 
-	Troop(int owner, int originId, int destinationId, int numCyborgs, int timeRemaining)
+	Troop(int id, int owner, int originId, int destinationId, int numCyborgs, int timeRemaining)
 	{
+		_id = id;
 		_owner = owner;
 		_originId = originId;
 		_destinationId = destinationId;
@@ -201,11 +212,26 @@ public:
 
 	Troop(const Troop& troop)
 	{
+		_id = troop.GetId();
 		_owner = troop.GetOwner();
 		_originId = troop.GetOriginId();
 		_destinationId = troop.GetDestinationId();
 		_numCyborgs = troop.GetNumCyborgs();
 		_timeRemaining = troop.GetTimeRemaining();
+	}
+
+	inline void Update(int owner, int originId, int destinationId, int numCyborgs, int timeRemaining)
+	{
+		_owner = owner;
+		_originId = originId;
+		_destinationId = destinationId;
+		_numCyborgs = numCyborgs;
+		_timeRemaining = timeRemaining;
+	}
+
+	inline int GetId() const
+	{
+		return _id;
 	}
 
 	inline int GetOwner() const
@@ -234,6 +260,72 @@ public:
 	}
 };
 
+class Bomb
+{
+private:
+	int _id = -1;
+	int _owner = 0;
+	int _originFactoryId = -1;
+	int _targetFactoryId = -1;
+	int _timeRemaining = -1;
+
+public:
+	Bomb()
+	{
+	}
+
+	Bomb(int id, int owner, int originFactoryId, int targetFactoryId, int timeRemaining)
+	{
+		_id = id;
+		_owner = owner;
+		_originFactoryId = originFactoryId;
+		_targetFactoryId = targetFactoryId;
+		_timeRemaining = timeRemaining;
+	}
+
+	Bomb(const Bomb& bomb)
+	{
+		_id = bomb.GetId();
+		_owner = bomb.GetOwner();
+		_originFactoryId = bomb.GetOriginFactoryId();
+		_targetFactoryId = bomb.GetTargetFactoryId();
+		_timeRemaining = bomb.GetTimeRemaining();
+	}
+
+	inline void Update(int owner, int originFactoryId, int targetFactoryId, int timeRemaining)
+	{
+		_owner = owner;
+		_originFactoryId = originFactoryId;
+		_targetFactoryId = targetFactoryId;
+		_timeRemaining = timeRemaining;
+	}
+
+	inline int GetId() const
+	{
+		return _id;
+	}
+
+	inline int GetOwner() const
+	{
+		return _owner;
+	}
+
+	inline int GetOriginFactoryId() const
+	{
+		return _originFactoryId;
+	}
+
+	inline int GetTargetFactoryId() const
+	{
+		return _targetFactoryId;
+	}
+
+	inline int GetTimeRemaining() const
+	{
+		return _timeRemaining;
+	}
+};
+
 class Model
 {
 private:
@@ -241,6 +333,7 @@ private:
 	vector<vector<int>> _distanceMatrix;
 	vector<Factory> _factories;
 	vector<Troop> _troops;
+	vector<Bomb> _bombs;
 
 public:
 	Model(int numFactories)
@@ -255,15 +348,36 @@ public:
 		}
 	}
 
-	inline int GetNumFactories() const
-	{
-		return _numFactories;
-	}
+	//=======================================================
+	// SETTER
 
 	inline void SetDistance(int factory1, int factory2, int distance)
 	{
 		_distanceMatrix.at(factory1).at(factory2) = distance;
 		_distanceMatrix.at(factory2).at(factory1) = distance;
+	}
+
+	inline void SetFactory(int factoryId, int owner, int numCyborgs, int production, int incapacitatedTimer)
+	{
+		_factories.at(factoryId).Update(owner, numCyborgs, production, incapacitatedTimer);
+	}
+
+	inline void SetTroop(int id, int owner, int originId, int destinationId, int numCyborgs, int timeRemaining)
+	{
+		_troops.emplace_back(id, owner, originId, destinationId, numCyborgs, timeRemaining);
+	}
+
+	inline void SetBomb(int id, int owner, int originFactoryId, int targetFactoryId, int timeRemaining)
+	{
+		_bombs.emplace_back(id, owner, originFactoryId, targetFactoryId, timeRemaining);
+	}
+
+	//=======================================================
+	// GETTER
+
+	inline int GetNumFactories() const
+	{
+		return _numFactories;
 	}
 
 	inline int GetDistance(int factory1, int factory2) const
@@ -291,7 +405,7 @@ public:
 		return totalDistance / (double) max(1, amountDistances);
 	}
 
-	vector<int> SortFactoriesByDistance(const int originFactoryId, const int owner) const
+	vector<int> GetFactoriesSortedByDistance(const int originFactoryId, const int owner) const
 			{
 		vector<int> result;
 		vector<Factory> ownedFactories = GetOwnedFactories(owner);
@@ -329,16 +443,6 @@ public:
 		return result;
 	}
 
-	inline void CleanUp()
-	{
-		_troops.clear();
-	}
-
-	inline void UpdateFactory(int factoryId, int owner, int numCyborgs, int production)
-	{
-		_factories.at(factoryId).Update(owner, numCyborgs, production);
-	}
-
 	inline Factory GetFactory(int id) const
 			{
 		return _factories.at(id);
@@ -359,11 +463,6 @@ public:
 		return result;
 	}
 
-	inline void AddTroop(int owner, int originId, int destinationId, int numCyborgs, int timeRemaining)
-	{
-		_troops.emplace_back(owner, originId, destinationId, numCyborgs, timeRemaining);
-	}
-
 	vector<Troop> GetTroops(int targetFactoryId) const
 			{
 		vector<Troop> result;
@@ -379,6 +478,34 @@ public:
 		}
 
 		return result;
+	}
+
+	vector<Bomb> GetBombs(int targetFactoryId) const
+			{
+		vector<Bomb> result;
+		auto pos = _bombs.begin();
+
+		while (pos != _bombs.end())
+		{
+			pos = find_if(pos, _bombs.end(), [&targetFactoryId](const Bomb& bomb)
+			{	return bomb.GetTargetFactoryId()==targetFactoryId;});
+
+			if (pos != _bombs.end())
+			{
+				result.emplace_back(_bombs.at(distance(_bombs.begin(), pos)));
+			}
+		}
+
+		return result;
+	}
+
+	//=======================================================
+	// OTHER
+
+	inline void CleanUp()
+	{
+		_troops.clear();
+		_bombs.clear();
 	}
 };
 
@@ -548,7 +675,7 @@ private:
 	 */
 	inline static double ComputeEnemiesScore(const Factory& targetFactory, const int& scoreMultiplier)
 	{
-		return (2 * scoreMultiplier) * ((1 - min(targetFactory.GetNumCyborgs() / 30.0, 1.0)) - 0.5);
+		return scoreMultiplier * ((1 - min(targetFactory.GetNumCyborgs() / 30.0, 1.0)));
 	}
 
 	/**
@@ -709,11 +836,11 @@ bool Bot::CreateReinforceObjective(const Model* model, Objective& objective, con
 
 	for (int turn = 0; turn < MAX_DISTANCE; turn++)
 	{
-		if (amountCyborgs >= 0)
+		if (amountCyborgs >= 0 && targetFactory.GetIncapacitatedTimer() - turn > 1)
 		{
 			amountCyborgs += targetFactory.GetProduction();
 		}
-		else
+		else if (amountCyborgs <= 0)
 		{
 			amountCyborgs -= targetFactory.GetProduction();
 		}
@@ -752,24 +879,16 @@ bool Bot::CreateReinforceObjective(const Model* model, Objective& objective, con
 			int objectiveId = targetFactory.GetId() * 100;
 
 			objective = Objective(objectiveId, targetFactory.GetId(), neededReinforcements, priority);
-
-			return true;
 		}
 	}
 
 	int incomingEnemies = 0;
-	int firstIncomingTurn = MAX_DISTANCE;
 
 	for (unsigned int i = 0; i < incomingTroops.size(); i++)
 	{
 		if (incomingTroops.at(i).GetOwner() == -1)
 		{
 			incomingEnemies += incomingTroops.at(i).GetNumCyborgs();
-
-			if (incomingTroops.at(i).GetTimeRemaining() < firstIncomingTurn)
-			{
-				firstIncomingTurn = incomingTroops.at(i).GetTimeRemaining();
-			}
 		}
 	}
 
@@ -783,10 +902,13 @@ bool Bot::CreateReinforceObjective(const Model* model, Objective& objective, con
 		}
 	}
 
-	int num = targetFactory.GetNumCyborgs() + (targetFactory.GetProduction() * firstIncomingTurn) - incomingEnemies
-			- (targetFactory.GetProduction() * GARRISON_MODIFIER);
+	int num = targetFactory.GetNumCyborgs() + (targetFactory.GetProduction() * firstEmergency) - incomingEnemies;
 
-	availableCyborgs.at(targetFactory.GetId()) = min(targetFactory.GetNumCyborgs(), max(0, num));
+	if (num > GARRISON_MODIFIER * targetFactory.GetProduction())
+	{
+		availableCyborgs.at(targetFactory.GetId()) = min(targetFactory.GetNumCyborgs(),
+				max(0, targetFactory.GetNumCyborgs() - GARRISON_MODIFIER * targetFactory.GetProduction()));
+	}
 
 	return false;
 }
@@ -810,7 +932,7 @@ bool Bot::CreateAttackObjective(const Model* model, Objective& objective, const 
 		}
 	}
 
-	vector<int> sortedFactories = model->SortFactoriesByDistance(targetFactory.GetId(), 1);
+	vector<int> sortedFactories = model->GetFactoriesSortedByDistance(targetFactory.GetId(), 1);
 
 	if (sortedFactories.size() > 0 && targetFactory.GetOwner() == -1)
 	{
@@ -833,6 +955,11 @@ bool Bot::CreateAttackObjective(const Model* model, Objective& objective, const 
 
 		//points if the target is neutral
 		priority += ComputeNeutralScore(targetFactory, ATTACK_NEUTRAL_SCORE);
+
+		if (!model->GetBombs(targetFactory.GetId()).empty())
+		{
+			priority += ATTACK_NEUTRAL_SCORE / 3;
+		}
 
 		if (priority >= 0)
 		{
@@ -1025,7 +1152,7 @@ string Bot::AssignTroops(const Model* model, const vector<Objective>& objectives
 
 				int distance = model->GetDistance(originFactoryId, objective.GetTargetFactory());
 
-				double score = (objective.GetPriority() * troopParticipation) / (double) distance;
+				double score = (objective.GetPriority() * troopParticipation) / (double) pow(distance, 2);
 				double scoreMultiplier = 0;
 
 				if (objectiveFulfilment < 0.75)
@@ -1118,7 +1245,7 @@ string Bot::LaunchBombs(const Model* model, int& numAvailBombs, vector<int>& bom
 
 		if (target.GetProduction() >= 2 && find(bombTargets.begin(), bombTargets.end(), target.GetId()) == bombTargets.end())
 		{
-			vector<int> sourceFactories = model->SortFactoriesByDistance(target.GetId(), 1);
+			vector<int> sourceFactories = model->GetFactoriesSortedByDistance(target.GetId(), 1);
 
 			if (!sourceFactories.empty())
 			{
@@ -1171,7 +1298,7 @@ double Bot::ComputeDistanceScore(const Model* model, const Factory& targetFactor
 		averageDistance = MAX_DISTANCE;
 	}
 
-	return scoreMultiplier * 2 * (1.0 - (averageDistance / (double) MAX_DISTANCE) - 0.5);
+	return scoreMultiplier * (1.0 - (averageDistance / (double) MAX_DISTANCE));
 }
 
 double Bot::ComputeProductionScore(const Factory& targetFactory, const int& scoreMultiplier)
@@ -1181,13 +1308,13 @@ double Bot::ComputeProductionScore(const Factory& targetFactory, const int& scor
 	switch (targetFactory.GetProduction())
 	{
 	case 0:
-		score = -scoreMultiplier;
+		score = 0;
 		break;
 	case 1:
-		score = scoreMultiplier * 0.25;
+		score = scoreMultiplier * 0.4;
 		break;
 	case 2:
-		score = scoreMultiplier * 0.5;
+		score = scoreMultiplier * 0.7;
 		break;
 	case 3:
 		score = scoreMultiplier;
@@ -1206,13 +1333,13 @@ double Bot::ComputeNeutralScore(const Factory& targetFactory, const int& scoreMu
 		switch (targetFactory.GetProduction())
 		{
 		case 0:
-			score = -scoreMultiplier;
+			score = 0;
 			break;
 		case 1:
-			score = scoreMultiplier * 0.25;
+			score = scoreMultiplier * 0.4;
 			break;
 		case 2:
-			score = scoreMultiplier * 0.5;
+			score = scoreMultiplier * 0.7;
 			break;
 		case 3:
 			score = scoreMultiplier;
@@ -1281,11 +1408,11 @@ int main()
 
 			if (entityType == "FACTORY")
 			{
-				_model->UpdateFactory(entityId, arg1, arg2, arg3);
+				_model->SetFactory(entityId, arg1, arg2, arg3, arg4);
 			}
 			else if (entityType == "TROOP")
 			{
-				_model->AddTroop(arg1, arg2, arg3, arg4, arg5);
+				_model->SetTroop(entityId, arg1, arg2, arg3, arg4, arg5);
 			}
 		}
 
