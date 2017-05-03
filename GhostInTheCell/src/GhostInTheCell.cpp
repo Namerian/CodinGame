@@ -862,7 +862,7 @@ bool Bot::CreateReinforceObjective(const Model& model, Objective& objective, con
 	}
 
 	int amountCyborgs = targetFactory.GetNumCyborgs();
-	int firstEmergency = MAX_DISTANCE+1;
+	int firstEmergency = MAX_DISTANCE + 1;
 	int neededReinforcements = 0;
 	int garrison = GARRISON_MODIFIER * targetFactory.GetProduction();
 
@@ -885,7 +885,7 @@ bool Bot::CreateReinforceObjective(const Model& model, Objective& objective, con
 			if (turn < firstEmergency)
 			{
 				firstEmergency = turn;
-				neededReinforcements = garrison-amountCyborgs;
+				neededReinforcements = garrison - amountCyborgs;
 			}
 		}
 	}
@@ -893,7 +893,7 @@ bool Bot::CreateReinforceObjective(const Model& model, Objective& objective, con
 	//compute the needed amount of reinforcements
 	//int neededReinforcements = abs(min(amountCyborgs, 0)) + 1;
 
-	if(targetFactory.GetIncapacitatedTimer()>0)
+	if (targetFactory.GetIncapacitatedTimer() > 0)
 	{
 		firstEmergency = 1;
 	}
@@ -1311,10 +1311,10 @@ int Bot::CreateAssignments(const Model& model, const vector<Objective>& objectiv
 			availableFactories.emplace_back(ownedFactories[ownedFactoriesIndex]);
 			combinationSize++;
 
-			if (availableCyborgs[ownedFactories[ownedFactoriesIndex].GetId()] >= 10)
-			{
-				combinationSize++;
-			}
+//			if (availableCyborgs[ownedFactories[ownedFactoriesIndex].GetId()] >= 10)
+//			{
+//				combinationSize++;
+//			}
 		}
 	}
 
@@ -1351,30 +1351,30 @@ int Bot::CreateAssignments(const Model& model, const vector<Objective>& objectiv
 			{
 				int cyborgs = availableCyborgs[originFactoryId];
 
-				if (cyborgs >= 10)
-				{
-					int cyborgs1 = cyborgs / 2;
-					int cyborgs2 = cyborgs / 2 + (cyborgs % 2);
+//				if (cyborgs >= 10)
+//				{
+//					int cyborgs1 = cyborgs / 2;
+//					int cyborgs2 = cyborgs / 2 + (cyborgs % 2);
+//
+//					double participation1 = cyborgs1 / (double) currentObjective.GetNeededCyborgs();
+//					double participation2 = cyborgs2 / (double) currentObjective.GetNeededCyborgs();
+//
+//					double score1 = min((currentObjective.GetScore() * participation1) / (double) pow(distance, 2),
+//							1.0);
+//					double score2 = min((currentObjective.GetScore() * participation2) / (double) pow(distance, 2),
+//							1.0);
+//
+//					queue.Push(Assignment(targetFactoryId, originFactoryId, cyborgs1, score1), score1);
+//					queue.Push(Assignment(targetFactoryId, originFactoryId, cyborgs2, score2), score2);
+//				}
+//				else
+//				{
+				int cyborgs1 = min(cyborgs, (int)(currentObjective.GetNeededCyborgs() * 1.5));
+				double participation = cyborgs1 / (double) currentObjective.GetNeededCyborgs();
+				double score = min((currentObjective.GetScore() * participation) / (double) pow(distance, 2), 1.0);
 
-					double participation1 = cyborgs1 / (double) currentObjective.GetNeededCyborgs();
-					double participation2 = cyborgs2 / (double) currentObjective.GetNeededCyborgs();
-
-					double score1 = min((currentObjective.GetScore() * participation1) / (double) pow(distance, 2),
-							1.0);
-					double score2 = min((currentObjective.GetScore() * participation2) / (double) pow(distance, 2),
-							1.0);
-
-					queue.Push(Assignment(targetFactoryId, originFactoryId, cyborgs1, score1), score1);
-					queue.Push(Assignment(targetFactoryId, originFactoryId, cyborgs2, score2), score2);
-				}
-				else
-				{
-					int cyborgs1 = cyborgs;
-					double participation = cyborgs1 / (double) currentObjective.GetNeededCyborgs();
-					double score = min((currentObjective.GetScore() * participation) / (double) pow(distance, 2), 1.0);
-
-					queue.Push(Assignment(targetFactoryId, originFactoryId, cyborgs1, score), score);
-				}
+				queue.Push(Assignment(targetFactoryId, originFactoryId, cyborgs1, score), score);
+//				}
 			}
 		}
 	}
