@@ -21,13 +21,13 @@ const int MAX_DISTANCE = 20;
 
 const int GARRISON_MODIFIER = 2;
 
-const int ATTACK_PRODUCTION_SCORE = 40;
-const int ATTACK_ENEMIES_SCORE = 30;
-const int ATTACK_NEUTRAL_SCORE = 30;
-const int ATTACK_BOMB_SCORE = 30;
+//const int ATTACK_PRODUCTION_SCORE = 40;
+//const int ATTACK_ENEMIES_SCORE = 30;
+//const int ATTACK_NEUTRAL_SCORE = 30;
+//const int ATTACK_BOMB_SCORE = 30;
 
-const int DEFENSE_PRODUCTION_SCORE = 80;
-const int DEFENSE_URGENCY_SCORE = 20;
+//const int DEFENSE_PRODUCTION_SCORE = 80;
+//const int DEFENSE_URGENCY_SCORE = 20;
 
 const int MAX_NUMBER_COMBINATIONS = 10000;
 
@@ -41,7 +41,7 @@ namespace utilities
 
 inline static unsigned long long ComputeNumberCombinations(unsigned long long n, unsigned long long r)
 {
-	cerr << "ComputeNumberCombinations(" << n << ", " << r << ") = ";
+	//cerr << "ComputeNumberCombinations(" << n << ", " << r << ") = ";
 
 	if (r > n)
 	{
@@ -56,7 +56,7 @@ inline static unsigned long long ComputeNumberCombinations(unsigned long long n,
 		result /= d;
 	}
 
-	cerr << result << endl;
+	//cerr << result << endl;
 	return result;
 }
 
@@ -136,8 +136,8 @@ public:
 	{
 	}
 
-	Factory(int id)
-			: _id(id)
+	Factory(int id) :
+			_id(id)
 	{
 	}
 
@@ -191,8 +191,8 @@ public:
 	{
 	}
 
-	Troop(int id, int owner, int originId, int destinationId, int numCyborgs, int timeRemaining)
-			: _id(id), _owner(owner), _originId(originId), _destinationId(destinationId), _numCyborgs(numCyborgs), _timeRemaining(
+	Troop(int id, int owner, int originId, int destinationId, int numCyborgs, int timeRemaining) :
+			_id(id), _owner(owner), _originId(originId), _destinationId(destinationId), _numCyborgs(numCyborgs), _timeRemaining(
 					timeRemaining)
 	{
 	}
@@ -252,8 +252,9 @@ public:
 	{
 	}
 
-	Bomb(int id, int owner, int originFactoryId, int targetFactoryId, int timeRemaining)
-			: _id(id), _owner(owner), _originFactoryId(originFactoryId), _targetFactoryId(targetFactoryId), _timeRemaining(timeRemaining)
+	Bomb(int id, int owner, int originFactoryId, int targetFactoryId, int timeRemaining) :
+			_id(id), _owner(owner), _originFactoryId(originFactoryId), _targetFactoryId(targetFactoryId), _timeRemaining(
+					timeRemaining)
 
 	{
 	}
@@ -366,12 +367,12 @@ public:
 	}
 
 	inline int GetDistance(int factory1, int factory2) const
-	{
+			{
 		return _distanceMatrix[factory1][factory2];
 	}
 
 	double GetAverageDistance(int targetFactoryId, int owner, int minProduction = 0) const
-	{
+			{
 		int totalDistance = 0;
 		int amountDistances = 0;
 		vector<Factory> ownedFactories = GetOwnedFactories(owner);
@@ -391,7 +392,7 @@ public:
 	}
 
 	vector<int> GetFactoriesSortedByDistance(const int originFactoryId, const int owner) const
-	{
+			{
 		vector<int> result;
 		vector<Factory> ownedFactories = GetOwnedFactories(owner);
 
@@ -429,12 +430,12 @@ public:
 	}
 
 	inline Factory GetFactory(int id) const
-	{
+			{
 		return _factories[id];
 	}
 
 	vector<Factory> GetOwnedFactories(int owner) const
-	{
+			{
 		vector<Factory> result;
 		auto pos = _factories.begin();
 
@@ -454,7 +455,7 @@ public:
 	}
 
 	vector<Troop> GetTroops(int targetFactoryId) const
-	{
+			{
 		vector<Troop> result;
 		auto pos = _troops.begin();
 
@@ -474,7 +475,7 @@ public:
 	}
 
 	vector<Bomb> GetBombs(int targetFactoryId) const
-	{
+			{
 		vector<Bomb> result;
 		auto pos = _bombs.begin();
 
@@ -543,8 +544,8 @@ public:
 	{
 	}
 
-	Objective(int targetFactoryId, int neededCyborgs, double score)
-			: _targetFactoryId(targetFactoryId), _neededCyborgs(neededCyborgs), _score(score)
+	Objective(int targetFactoryId, int neededCyborgs, double score) :
+			_targetFactoryId(targetFactoryId), _neededCyborgs(neededCyborgs), _score(score)
 	{
 	}
 
@@ -577,8 +578,9 @@ public:
 	{
 	}
 
-	Assignment(int targetFactoryId, int originFactoryId, int amountCyborgs, double score)
-			: _targetFactoryId(targetFactoryId), _originFactoryId(originFactoryId), _amountCyborgs(amountCyborgs), _score(score)
+	Assignment(int targetFactoryId, int originFactoryId, int amountCyborgs, double score) :
+			_targetFactoryId(targetFactoryId), _originFactoryId(originFactoryId), _amountCyborgs(amountCyborgs), _score(
+					score)
 	{
 	}
 
@@ -652,20 +654,22 @@ private:
 	/**
 	 *
 	 */
-	static void ComputeAvailableCyborgs(const Model& model, const vector<Objective>& objectives, vector<int>& availableCyborgs);
+	static void ComputeAvailableCyborgs(const Model& model, const vector<Objective>& objectives,
+			vector<int>& availableCyborgs);
 
 	/**
 	 * Assigns available Cyborgs to the Objectives.
 	 *
 	 */
-	static string AssignTroops(const Model& model, const vector<Objective>& objectives, const vector<int>& availableCyborgs);
+	static string AssignTroops(const Model& model, const vector<Objective>& objectives,
+			const vector<int>& availableCyborgs);
 
 	/**
 	 *
-	 *	@return: the number of factories with available cyborgs
+	 *	@return: the size of the combinations that can be created
 	 */
-	static int CreateAssignments(const Model& model, const vector<Objective>& objectives, const vector<int>& availableCyborgs,
-			vector<Assignment>& assignments);
+	static int CreateAssignments(const Model& model, const vector<Objective>& objectives,
+			const vector<int>& availableCyborgs, vector<Assignment>& assignments);
 
 	//=====================================================================
 	// SCORE METHODS
@@ -730,7 +734,8 @@ string Bot::ComputeMoves(const Model& model)
 		{
 			Factory factory = factories[i];
 
-			if (factory.GetId() != _startFactoryId && factory.GetProduction() < 3 && availableCyborgs[factory.GetId()] > 15)
+			if (factory.GetId() != _startFactoryId && factory.GetProduction() < 3
+					&& availableCyborgs[factory.GetId()] > 15)
 			{
 				incCommand = "INC " + to_string(factory.GetId());
 				availableCyborgs[factory.GetId()] -= 10;
@@ -821,7 +826,8 @@ void Bot::EvaluateFactories(const Model& model, vector<Objective>& objectives, v
 			objectives.emplace_back(queue.Pop());
 			numSelectedObjectives++;
 		} while (!queue.Empty()
-				&& ComputeNumberCombinations((numSelectedObjectives + 1) * availableFactories, availableFactories) < MAX_NUMBER_COMBINATIONS);
+				&& ComputeNumberCombinations((numSelectedObjectives + 1) * availableFactories, availableFactories)
+						< MAX_NUMBER_COMBINATIONS);
 	}
 
 	double time1 = Elapsed(beginEvaluating);
@@ -856,8 +862,8 @@ bool Bot::CreateReinforceObjective(const Model& model, Objective& objective, con
 	}
 
 	int amountCyborgs = targetFactory.GetNumCyborgs();
-	int firstEmergency = MAX_DISTANCE;
-	int emergencyNeed = 0;
+	int firstEmergency = MAX_DISTANCE+1;
+	int neededReinforcements = 0;
 	int garrison = GARRISON_MODIFIER * targetFactory.GetProduction();
 
 	//run a simulation to see if reinforcements are needed
@@ -874,24 +880,30 @@ bool Bot::CreateReinforceObjective(const Model& model, Objective& objective, con
 
 		amountCyborgs += incomingDeltas[turn];
 
-		if (amountCyborgs < garrison)
+		if (amountCyborgs < 0)
 		{
 			if (turn < firstEmergency)
 			{
 				firstEmergency = turn;
-				emergencyNeed -= amountCyborgs;
+				neededReinforcements = garrison-amountCyborgs;
 			}
 		}
 	}
 
 	//compute the needed amount of reinforcements
-	int neededReinforcements = emergencyNeed;
+	//int neededReinforcements = abs(min(amountCyborgs, 0)) + 1;
+
+	if(targetFactory.GetIncapacitatedTimer()>0)
+	{
+		firstEmergency = 1;
+	}
 
 	if (neededReinforcements > 0)
 	{
 		double priority = min((targetFactory.GetProduction() * 3.0) / (double) firstEmergency, 1.0);
 
 		objective = Objective(targetFactory.GetId(), neededReinforcements, priority);
+		//cerr << "  created defence objective: factory=" << targetFactory.GetId() << "; score=" << priority << endl;
 
 		return true;
 	}
@@ -926,7 +938,7 @@ bool Bot::CreateAttackObjective(const Model& model, const Factory& targetFactory
 	//computing the amount of cyborgs needed to take the targeted factory
 	int neededCyborgs = enemies - friendlies + (targetFactory.GetProduction() * GARRISON_MODIFIER);
 
-	if (targetFactory.GetOwner() == 0)
+	if (targetFactory.GetOwner() == -1)
 	{
 		neededCyborgs += model.GetAverageDistance(targetFactory.GetId(), 1, 0) * targetFactory.GetProduction();
 	}
@@ -970,7 +982,8 @@ string Bot::LaunchBombs(const Model& model, int numAvailBombs, vector<int>& bomb
 	{
 		Factory target = targets[i];
 
-		if (target.GetProduction() >= 2 && find(bombTargets.begin(), bombTargets.end(), target.GetId()) == bombTargets.end())
+		if (target.GetProduction() >= 2
+				&& find(bombTargets.begin(), bombTargets.end(), target.GetId()) == bombTargets.end())
 		{
 			vector<int> sourceFactories = model.GetFactoriesSortedByDistance(target.GetId(), 1);
 
@@ -1002,7 +1015,8 @@ string Bot::LaunchBombs(const Model& model, int numAvailBombs, vector<int>& bomb
 //==================================================================================
 //
 //==================================================================================
-void Bot::ComputeAvailableCyborgs(const Model& model, const vector<Objective>& objectives, vector<int>& availableCyborgs)
+void Bot::ComputeAvailableCyborgs(const Model& model, const vector<Objective>& objectives,
+		vector<int>& availableCyborgs)
 {
 	vector<Factory> ownedFactories = model.GetOwnedFactories(1);
 
@@ -1053,7 +1067,10 @@ void Bot::ComputeAvailableCyborgs(const Model& model, const vector<Objective>& o
 			}
 		}
 
-		int num = currentFactory.GetNumCyborgs() + (production - incomingEnemies) - GARRISON_MODIFIER * currentFactory.GetProduction();
+		int num = currentFactory.GetNumCyborgs()
+				+ min(production - incomingEnemies, 0)
+				+ currentFactory.GetProduction()
+				- GARRISON_MODIFIER * currentFactory.GetProduction();
 
 		if (currentFactory.GetIncapacitatedTimer() < 1 && num > 0)
 		{
@@ -1069,53 +1086,19 @@ void Bot::ComputeAvailableCyborgs(const Model& model, const vector<Objective>& o
 //==================================================================================
 string Bot::AssignTroops(const Model& model, const vector<Objective>& objectives, const vector<int>& availableCyborgs)
 {
-//	timespec beginAssigning;
-//	clock_gettime(CLOCK_REALTIME, &beginAssigning);
-	//cerr << "start assigning troops" << endl;
-
 	string commands = "";
-	//vector<Factory> ownedFactories = model.GetOwnedFactories(1);
 
 	//***********************************************************************
 	//create assignments
 	vector<Assignment> assignments;
 
-	int numAvailableFactories = CreateAssignments(model, objectives, availableCyborgs, assignments);
-
-	//cerr << "- owned factories: ";
-//	for (unsigned int i = 0; i < ownedFactories.size(); i++)
-//	{
-//		int factoryId = ownedFactories[i].GetId();
-//		//cerr << factoryId << " ";
-//
-//		if (availableCyborgs[factoryId] > 0)
-//		{
-//			numAvailableFactories++;
-//
-//			for (unsigned int j = 0; j < objectives.size(); j++)
-//			{
-//				Objective objective = objectives[j];
-//
-//				if (objective.GetTargetFactoryId() != factoryId)
-//				{
-//					int amountCyborgs = min(availableCyborgs[factoryId], objective.GetNeededCyborgs());
-//
-//					assignments.emplace_back(objective.GetTargetFactoryId(), factoryId, amountCyborgs);
-//				}
-//			}
-//		}
-//	}
-	//cerr << endl;
-
-//	cerr << "- finished creating assignments (" << Elapsed(beginAssigning) << ") :" << endl;
-//	cerr << "  * availableFact=" << numAvailableFactories;
-//	cerr << "; numAssignments=" << assignments.size() << endl;
+	int combinationSize = CreateAssignments(model, objectives, availableCyborgs, assignments);
 
 	//***********************************************************************
 	//create pair groups
 
-	timespec beginCreatingPairs;
-	clock_gettime(CLOCK_REALTIME, &beginCreatingPairs);
+	timespec beginCreatingGroups;
+	clock_gettime(CLOCK_REALTIME, &beginCreatingGroups);
 
 	vector<vector<int>> assignmentGroups;
 
@@ -1125,13 +1108,12 @@ string Bot::AssignTroops(const Model& model, const vector<Objective>& objectives
 	}
 
 	int n = assignments.size();
-	int r = numAvailableFactories;
+	int r = combinationSize;
 
 	vector<bool> combination(n);
 	fill(combination.begin(), combination.begin() + r, true);
 
 	vector<int> assignedCyborgs = vector<int>(model.GetNumFactories());
-	;
 
 	do
 	{
@@ -1145,22 +1127,18 @@ string Bot::AssignTroops(const Model& model, const vector<Objective>& objectives
 			}
 		}
 
-		//################################
 		//check for validity
 		fill(assignedCyborgs.begin(), assignedCyborgs.end(), 0);
+		bool valid = true;
 
 		for (unsigned int assignmentIndex = 0; assignmentIndex < currentGroup.size(); assignmentIndex++)
 		{
 			Assignment currentAssignment = assignments[currentGroup[assignmentIndex]];
+			int originFactoryId = currentAssignment.GetOriginFactoryId();
 
-			assignedCyborgs[currentAssignment.GetOriginFactoryId()] += currentAssignment.GetAmountCyborgs();
-		}
+			assignedCyborgs[originFactoryId] += currentAssignment.GetAmountCyborgs();
 
-		bool valid = true;
-
-		for (int factoryId = 0; factoryId < model.GetNumFactories(); factoryId++)
-		{
-			if (assignedCyborgs[factoryId] > availableCyborgs[factoryId])
+			if (assignedCyborgs[originFactoryId] > availableCyborgs[originFactoryId])
 			{
 				valid = false;
 				break;
@@ -1173,7 +1151,7 @@ string Bot::AssignTroops(const Model& model, const vector<Objective>& objectives
 		}
 	} while (prev_permutation(combination.begin(), combination.end()));
 
-	cerr << "- finished creating assignment groups (" << Elapsed(beginCreatingPairs) << ") :" << endl;
+	cerr << "- finished creating assignment groups (" << Elapsed(beginCreatingGroups) << ") :" << endl;
 	cerr << "  * numPairGroups=" << assignmentGroups.size() << endl;
 
 	//***********************************************************************
@@ -1196,7 +1174,8 @@ string Bot::AssignTroops(const Model& model, const vector<Objective>& objectives
 		{
 			int objectiveId = assignments[currentPairGroup[pairIndex]].GetTargetFactoryId();
 
-			if (objectiveIds.size() == 0 || find(objectiveIds.begin(), objectiveIds.end(), objectiveId) == objectiveIds.end())
+			if (objectiveIds.size() == 0
+					|| find(objectiveIds.begin(), objectiveIds.end(), objectiveId) == objectiveIds.end())
 			{
 				objectiveIds.push_back(objectiveId);
 			}
@@ -1249,6 +1228,11 @@ string Bot::AssignTroops(const Model& model, const vector<Objective>& objectives
 			{
 				double objectiveFulfilment = assignedCyborgs[objectiveIdIndex] / (double) objective.GetNeededCyborgs();
 
+				if (objectiveFulfilment > 1.1)
+				{
+					objectiveFulfilment -= (objectiveFulfilment - 1.1);
+				}
+
 				//double troopParticipation = assignment.GetAmountCyborgs() / (double) objective.GetNeededCyborgs();
 
 				//double revisedObjectiveScore = objective.GetScore() * objectiveFulfilment * troopParticipation;
@@ -1296,7 +1280,9 @@ string Bot::AssignTroops(const Model& model, const vector<Objective>& objectives
 			commands.append(";");
 		}
 
-		commands.append("MOVE " + to_string(originFactoryId) + " " + to_string(targetFactoryId) + " " + to_string(amountCyborgs));
+		commands.append(
+				"MOVE " + to_string(originFactoryId) + " " + to_string(targetFactoryId) + " "
+						+ to_string(amountCyborgs));
 	}
 
 	//cerr << "finished creating commands" << endl;
@@ -1314,7 +1300,7 @@ int Bot::CreateAssignments(const Model& model, const vector<Objective>& objectiv
 
 	vector<Factory> ownedFactories = model.GetOwnedFactories(1);
 	vector<Factory> availableFactories;
-	int numAvailableFactories = 0;
+	int combinationSize = 0;
 	PriorityQueueMax<Assignment, double> queue;
 
 	//identifying the factories with available cyborgs
@@ -1323,7 +1309,12 @@ int Bot::CreateAssignments(const Model& model, const vector<Objective>& objectiv
 		if (availableCyborgs[ownedFactories[ownedFactoriesIndex].GetId()] > 0)
 		{
 			availableFactories.emplace_back(ownedFactories[ownedFactoriesIndex]);
-			numAvailableFactories++;
+			combinationSize++;
+
+			if (availableCyborgs[ownedFactories[ownedFactoriesIndex].GetId()] >= 10)
+			{
+				combinationSize++;
+			}
 		}
 	}
 
@@ -1331,7 +1322,14 @@ int Bot::CreateAssignments(const Model& model, const vector<Objective>& objectiv
 	for (unsigned int objectiveIndex = 0; objectiveIndex < objectives.size(); objectiveIndex++)
 	{
 		Objective currentObjective = objectives[objectiveIndex];
-		vector<Bomb> bombs = model.GetBombs(currentObjective.GetTargetFactoryId());
+
+		if (currentObjective.GetScore() == 0)
+		{
+			continue;
+		}
+
+		int targetFactoryId = currentObjective.GetTargetFactoryId();
+		vector<Bomb> bombs = model.GetBombs(targetFactoryId);
 		int timeToImpact = 0;
 
 		//determine the time to impact of the bomb that is farthest away
@@ -1343,38 +1341,39 @@ int Bot::CreateAssignments(const Model& model, const vector<Objective>& objectiv
 			}
 		}
 
-		for (unsigned int availableFactoriesIndex = 0; availableFactoriesIndex < availableFactories.size(); availableFactoriesIndex++)
+		for (unsigned int availableFactoriesIndex = 0; availableFactoriesIndex < availableFactories.size();
+				availableFactoriesIndex++)
 		{
 			int originFactoryId = availableFactories[availableFactoriesIndex].GetId();
-			int distance = model.GetDistance(originFactoryId, currentObjective.GetTargetFactoryId());
+			int distance = model.GetDistance(originFactoryId, targetFactoryId);
 
-			if (originFactoryId != currentObjective.GetTargetFactoryId() && distance > timeToImpact)
+			if (originFactoryId != targetFactoryId && distance > timeToImpact)
 			{
 				int cyborgs = availableCyborgs[originFactoryId];
 
-				if (currentObjective.GetScore() > 0)
+				if (cyborgs >= 10)
 				{
-					if (cyborgs >= 10)
-					{
-						int cyborgs1 = cyborgs / 2;
-						int cyborgs2 = cyborgs / 2 + (cyborgs % 2);
+					int cyborgs1 = cyborgs / 2;
+					int cyborgs2 = cyborgs / 2 + (cyborgs % 2);
 
-						double participation1 = cyborgs1 / (double) currentObjective.GetNeededCyborgs();
-						double participation2 = cyborgs2 / (double) currentObjective.GetNeededCyborgs();
+					double participation1 = cyborgs1 / (double) currentObjective.GetNeededCyborgs();
+					double participation2 = cyborgs2 / (double) currentObjective.GetNeededCyborgs();
 
-						double score1 = (currentObjective.GetScore() * participation1) / (double) pow(distance, 2);
-						double score2 = (currentObjective.GetScore() * participation2) / (double) pow(distance, 2);
+					double score1 = min((currentObjective.GetScore() * participation1) / (double) pow(distance, 2),
+							1.0);
+					double score2 = min((currentObjective.GetScore() * participation2) / (double) pow(distance, 2),
+							1.0);
 
-						queue.Push(Assignment(currentObjective.GetTargetFactoryId(), originFactoryId, cyborgs1, score1), score1);
-						queue.Push(Assignment(currentObjective.GetTargetFactoryId(), originFactoryId, cyborgs2, score2), score2);
-					}
-					else
-					{
-						double participation = cyborgs / (double) currentObjective.GetNeededCyborgs();
-						double score = (currentObjective.GetScore() * participation) / (double) pow(distance, 2);
+					queue.Push(Assignment(targetFactoryId, originFactoryId, cyborgs1, score1), score1);
+					queue.Push(Assignment(targetFactoryId, originFactoryId, cyborgs2, score2), score2);
+				}
+				else
+				{
+					int cyborgs1 = cyborgs;
+					double participation = cyborgs1 / (double) currentObjective.GetNeededCyborgs();
+					double score = min((currentObjective.GetScore() * participation) / (double) pow(distance, 2), 1.0);
 
-						queue.Push(Assignment(currentObjective.GetTargetFactoryId(), originFactoryId, cyborgs, score), score);
-					}
+					queue.Push(Assignment(targetFactoryId, originFactoryId, cyborgs1, score), score);
 				}
 			}
 		}
@@ -1387,13 +1386,15 @@ int Bot::CreateAssignments(const Model& model, const vector<Objective>& objectiv
 		{
 			assignments.emplace_back(queue.Pop());
 			numSelectedAssignments++;
-		} while (!queue.Empty() && ComputeNumberCombinations((numSelectedAssignments + 1), numAvailableFactories) < MAX_NUMBER_COMBINATIONS);
+		} while (!queue.Empty()
+				&& ComputeNumberCombinations((numSelectedAssignments + 1), combinationSize)
+						< MAX_NUMBER_COMBINATIONS);
 	}
 
 	cerr << "- finished creating assignments (" << Elapsed(beginAssigning) << ") :" << endl;
 	cerr << "  * numAssignments=" << assignments.size() << endl;
 
-	return numAvailableFactories;
+	return combinationSize;
 }
 
 //==================================================================================
