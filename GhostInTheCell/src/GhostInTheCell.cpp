@@ -18,7 +18,7 @@
 using namespace std;
 
 const int MAX_DISTANCE = 20;
-const int MAX_NUMBER_COMBINATIONS = 15000;
+const int MAX_NUMBER_COMBINATIONS = 10000;
 
 //################################################################################
 //################################################################################
@@ -53,10 +53,12 @@ inline static unsigned long long ComputeTotalNumberCombinations(unsigned long lo
 {
 	unsigned long long result = 0;
 
-	for (unsigned int i = 1; i <= r; i++)
-	{
-		result += ComputeNumberCombinations(n, i);
-	}
+//	for (unsigned int i = 1; i <= r; i++)
+//	{
+//		result += ComputeNumberCombinations(n, i);
+//	}
+
+	result = pow(2, n);
 
 	return result;
 }
@@ -903,6 +905,12 @@ private:
 	static void CreateAssignmentGroups(const Model& model, const vector<int>& availableCyborgs, const vector<Assignment>& assignments,
 			int maxCombinationSize, vector<vector<int>>& assignmentGroups);
 
+	/**
+	 *
+	 */
+	static int EvaluateAssignmentGroups(const Model& model, const vector<int>& availableCyborgs, const vector<Objective>& objectives,
+			const vector<Assignment>& assignments, const vector<vector<int>>& assignmentGroups);
+
 	//=====================================================================
 	//
 
@@ -931,10 +939,7 @@ string Bot::ComputeMoves(const Model& model)
 	// BOMBS
 	string bombCommand = "";
 
-	if (_currentTurn > 9)
-	{
-		bombCommand = LaunchBombs(model, _numAvailBombs, _bombTargets);
-	}
+	bombCommand = LaunchBombs(model, _numAvailBombs, _bombTargets);
 
 	if (commands != "" && bombCommand != "")
 	{
@@ -968,7 +973,7 @@ string Bot::ComputeMoves(const Model& model)
 			{
 				int distToEnemy = model.GetDistance(factory.GetId(), sortedEnemyFactories[0]);
 
-				if (factory.GetProduction() < 3 && availableCyborgs[factory.GetId()] > 15 && distToEnemy > 7)
+				if (factory.GetProduction() < 3 && availableCyborgs[factory.GetId()] > 10 && distToEnemy > 7)
 				{
 					incCommand = "INC " + to_string(factory.GetId());
 					availableCyborgs[factory.GetId()] -= 10;
@@ -1070,30 +1075,27 @@ bool Bot::EvaluateOwnedFactory(const Model& model, const Factory& targetFactory,
 	}
 
 	int amountCyborgs = targetFactory.GetNumCyborgs();
-	int firstEmergency = MAX_DISTANCE + 1;
 	int neededReinforcements = 0;
+	bool emergency = false;
 
 	//run a simulation to see if reinforcements are needed
 	for (int turn = 0; turn < MAX_DISTANCE; turn++)
 	{
-		if (amountCyborgs >= 0 && targetFactory.GetIncapacitatedTimer() - turn > 1)
+		if (amountCyborgs >= 0 && targetFactory.GetIncapacitatedTimer() - turn > 2)
 		{
 			amountCyborgs += targetFactory.GetProduction();
 		}
-		else if (amountCyborgs <= 0)
+		else if (amountCyborgs < 0)
 		{
 			amountCyborgs -= targetFactory.GetProduction();
 		}
 
 		amountCyborgs += incomingDeltas[turn];
 
-		if (amountCyborgs < 0)
+		if (amountCyborgs < 0 && !emergency)
 		{
-			if (turn < firstEmergency)
-			{
-				firstEmergency = turn;
-				neededReinforcements = -amountCyborgs + 1;
-			}
+			neededReinforcements = -amountCyborgs + 1;
+			emergency = true;
 		}
 	}
 
@@ -1103,8 +1105,11 @@ bool Bot::EvaluateOwnedFactory(const Model& model, const Factory& targetFactory,
 	 neededReinforcements += 2;
 	 }*/
 
-	if (neededReinforcements > 0)
+	if (emergency)
 	{
+		//if there are even more enemies incoming request reinforcements for them too
+		neededReinforcements = max(neededReinforcements, -amountCyborgs);
+
 		//double priority = min((targetFactory.GetProduction() * 3.0) / (double) firstEmergency, 1.0);
 		double priority = ComputeFactoryValue(model, targetFactoryId);
 
@@ -1260,104 +1265,18 @@ string Bot::AssignTroops(const Model& model, const vector<Objective>& objectives
 	CreateAssignmentGroups(model, availableCyborgs, assignments, maxCombinationSize, assignmentGroups);
 
 	//***********************************************************************
-	//evaluate pairGroups
+	//evaluate assignment groups
 
-	timespec beginEvaluatingGroups;
-	clock_gettime(CLOCK_REALTIME, &beginEvaluatingGroups);
-
-	PriorityQueueMax<int, double> pairGroupPrioQueue;
-
-	for (unsigned int pairGroupIndex = 0; pairGroupIndex < assignmentGroups.size(); pairGroupIndex++)
-	{
-		vector<int> currentPairGroup = assignmentGroups[pairGroupIndex];
-
-		//################################
-		// identifying the objectives
-		vector<int> objectiveIds;
-
-		for (unsigned int pairIndex = 0; pairIndex < currentPairGroup.size(); pairIndex++)
-		{
-			int objectiveId = assignments[currentPairGroup[pairIndex]].GetTargetFactoryId();
-
-			if (objectiveIds.size() == 0 || find(objectiveIds.begin(), objectiveIds.end(), objectiveId) == objectiveIds.end())
-			{
-				objectiveIds.push_back(objectiveId);
-			}
-		}
-
-		//################################
-		// counting the total amount of assigned Cyborgs for each objective
-		vector<int> assignedCyborgs(objectiveIds.size());
-		vector<int> assignedFactories(objectiveIds.size());
-
-		fill(assignedCyborgs.begin(), assignedCyborgs.end(), 0);
-		fill(assignedFactories.begin(), assignedFactories.end(), 0);
-
-		for (unsigned int pairIndex = 0; pairIndex < currentPairGroup.size(); pairIndex++)
-		{
-			Assignment assignment = assignments[currentPairGroup[pairIndex]];
-
-			int objectiveId = assignment.GetTargetFactoryId();
-
-			auto pos = find(objectiveIds.begin(), objectiveIds.end(), objectiveId);
-			int objectiveIdIndex = distance(objectiveIds.begin(), pos);
-
-			if (pos != objectiveIds.end())
-			{
-				assignedCyborgs[objectiveIdIndex] += assignment.GetAmountCyborgs();
-				assignedFactories[objectiveIdIndex] += 1;
-			}
-		}
-
-		//################################
-		// computing the score
-		double pairGroupScore = 0;
-
-		for (unsigned int pairIndex = 0; pairIndex < currentPairGroup.size(); pairIndex++)
-		{
-			Assignment assignment = assignments[currentPairGroup[pairIndex]];
-
-			int objectiveId = assignment.GetTargetFactoryId();
-
-			auto posObj = find_if(objectives.begin(), objectives.end(), [&objectiveId](const Objective& obj)
-			{	return obj.GetTargetFactoryId() == objectiveId;});
-			int objectiveIndex = distance(objectives.begin(), posObj);
-			Objective objective = objectives[objectiveIndex];
-
-			auto pos = find(objectiveIds.begin(), objectiveIds.end(), objectiveId);
-			int objectiveIdIndex = distance(objectiveIds.begin(), pos);
-
-			if (pos != objectiveIds.end())
-			{
-				double objectiveFulfilment = assignedCyborgs[objectiveIdIndex] / (double) objective.GetNeededCyborgs();
-
-				double maxFullfilment = 4;
-				if (model.GetFactory(objectiveId).GetOwner() == 0)
-				{
-					maxFullfilment = 1.4;
-				}
-
-				objectiveFulfilment = max(maxFullfilment - (objectiveFulfilment - maxFullfilment), 0.1);
-				double score = assignment.GetScore() * objectiveFulfilment;
-
-				pairGroupScore += score;
-			}
-
-		}
-
-		pairGroupPrioQueue.Push(pairGroupIndex, pairGroupScore);
-	}
-
-	cerr << "- finished evaluating assignment groups (" << Elapsed(beginEvaluatingGroups) << ") :" << endl;
+	int bestPairGroupIndex = EvaluateAssignmentGroups(model, availableCyborgs, objectives, assignments, assignmentGroups);
 
 	//***********************************************************************
 	//create commands
-	if (pairGroupPrioQueue.Empty())
+
+	if (bestPairGroupIndex == -1)
 	{
 		return commands;
 	}
 
-	int bestPairGroupIndex = pairGroupPrioQueue.Pop();
 	vector<int> bestPairGroup = assignmentGroups[bestPairGroupIndex];
 	vector<Assignment> bestPairs;
 
@@ -1409,6 +1328,7 @@ int Bot::CreateAssignments(const Model& model, const vector<Objective>& objectiv
 		if (availableCyborgs[ownedFactories[ownedFactoriesIndex].GetId()] > 0)
 		{
 			availableFactories.emplace_back(ownedFactories[ownedFactoriesIndex]);
+			combinationSize++;
 		}
 	}
 
@@ -1439,50 +1359,31 @@ int Bot::CreateAssignments(const Model& model, const vector<Objective>& objectiv
 		{
 			int originFactoryId = availableFactories[availableFactoriesIndex].GetId();
 			int distance = model.GetDistance(originFactoryId, targetFactoryId);
-			double baseScore = currentObjective.GetScore() / pow(distance, 2);
+			double baseScore = currentObjective.GetScore() / pow(distance, 2) * currentObjective.GetNeededCyborgs();
 
 			if (originFactoryId != targetFactoryId && distance > timeToImpact)
 			{
 				int cyborgs = availableCyborgs[originFactoryId];
-
-				//double participation = cyborgs / (double) currentObjective.GetNeededCyborgs();
-				//double score = min((currentObjective.GetScore() * participation) / distanceSqr, 1.0);
-				double score = baseScore * cyborgs;
+				double participation = cyborgs / (double) currentObjective.GetNeededCyborgs();
+				double score = baseScore * participation;
 
 				createdAssignments.emplace_back(targetFactoryId, originFactoryId, cyborgs, score);
 				queue.Push(createdAssignments.size() - 1, score);
 
 				//
-				combinationSize++;
+				//combinationSize++;
 
 				if (cyborgs > currentObjective.GetNeededCyborgs())
 				{
 					int cyborgs1 = currentObjective.GetNeededCyborgs();
-
-					//double participation1 = cyborgs1 / (double) currentObjective.GetNeededCyborgs();
-					//double score1 = min((currentObjective.GetScore() * participation1) / distanceSqr, 1.0);
-					double score1 = baseScore * cyborgs1;
+					double participation1 = cyborgs1 / (double) currentObjective.GetNeededCyborgs();
+					double score1 = baseScore * participation1;
 
 					createdAssignments.emplace_back(targetFactoryId, originFactoryId, cyborgs1, score1);
 					queue.Push(createdAssignments.size() - 1, score1);
 
 					//
-					//combinationSize++;
-				}
-
-				if (cyborgs > 4)
-				{
-					int cyborgs2 = 2;
-
-					//double participation2 = cyborgs2 / (double) currentObjective.GetNeededCyborgs();
-					//double score2 = min((currentObjective.GetScore() * participation2) / baseScore, 1.0);
-					double score2 = baseScore * cyborgs2;
-
-					createdAssignments.emplace_back(targetFactoryId, originFactoryId, cyborgs2, score2);
-					queue.Push(createdAssignments.size() - 1, score2);
-
-					//
-					//combinationSize++;
+					combinationSize++;
 				}
 			}
 		}
@@ -1570,6 +1471,73 @@ void Bot::CreateAssignmentGroups(const Model& model, const vector<int>& availabl
 
 	cerr << "- finished creating assignment groups (" << Elapsed(beginCreatingGroups) << ") :" << endl;
 	cerr << "  * numPairGroups=" << assignmentGroups.size() << endl;
+}
+
+int Bot::EvaluateAssignmentGroups(const Model& model, const vector<int>& availableCyborgs, const vector<Objective>& objectives,
+		const vector<Assignment>& assignments, const vector<vector<int>>& assignmentGroups)
+{
+	timespec beginEvaluatingGroups;
+	clock_gettime(CLOCK_REALTIME, &beginEvaluatingGroups);
+
+	PriorityQueueMax<int, double> pairGroupPrioQueue;
+
+	for (unsigned int assignmentGroupIndex = 0; assignmentGroupIndex < assignmentGroups.size(); assignmentGroupIndex++)
+	{
+		vector<int> currentGroup = assignmentGroups[assignmentGroupIndex];
+
+		//################################
+		// counting the total amount of assigned Cyborgs for each objective
+		vector<int> assignedCyborgs(model.GetNumFactories());
+
+		for (unsigned int currentGroupIndex = 0; currentGroupIndex < currentGroup.size(); currentGroupIndex++)
+		{
+			int cyborgs = assignments[currentGroup[currentGroupIndex]].GetAmountCyborgs();
+			int targetFactoryId = assignments[currentGroup[currentGroupIndex]].GetTargetFactoryId();
+
+			assignedCyborgs[targetFactoryId] += cyborgs;
+		}
+
+		//################################
+		// computing the score
+		double pairGroupScore = 0;
+
+		for (unsigned int currentGroupIndex = 0; currentGroupIndex < currentGroup.size(); currentGroupIndex++)
+		{
+			int targetFactoryId = assignments[currentGroup[currentGroupIndex]].GetTargetFactoryId();
+			double assignmentScore = assignments[currentGroup[currentGroupIndex]].GetScore();
+
+			auto posObj = find_if(objectives.begin(), objectives.end(), [&targetFactoryId](const Objective& obj)
+			{	return obj.GetTargetFactoryId() == targetFactoryId;});
+			int objectiveIndex = distance(objectives.begin(), posObj);
+			Objective objective = objectives[objectiveIndex];
+
+			double objectiveFulfilment = assignedCyborgs[targetFactoryId] / (double) objective.GetNeededCyborgs();
+
+			double maxFullfilment = 4;
+			if (model.GetFactory(targetFactoryId).GetOwner() == 0)
+			{
+				maxFullfilment = 1.4;
+			}
+
+			objectiveFulfilment = max(maxFullfilment - (objectiveFulfilment - maxFullfilment), 0.1);
+			double score = assignmentScore * objectiveFulfilment;
+
+			pairGroupScore += score;
+		}
+
+		pairGroupPrioQueue.Push(assignmentGroupIndex, pairGroupScore);
+	}
+
+	cerr << "- finished evaluating assignment groups (" << Elapsed(beginEvaluatingGroups) << ") :" << endl;
+
+	if (pairGroupPrioQueue.Empty())
+	{
+		return -1;
+	}
+
+	int bestGroup = pairGroupPrioQueue.Pop();
+
+	return bestGroup;
 }
 
 string Bot::MoveRemainingUnits(const Model& model, vector<int>& availableCyborgs)
