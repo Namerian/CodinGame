@@ -1551,15 +1551,6 @@ string Bot::MoveRemainingUnits(const Model& model, vector<int>& availableCyborgs
 		return commands;
 	}
 
-//	vector<Factory> ownedFactories = model.GetOwnedFactories(1);
-//	vector<int> averageDistancesVector(model.GetNumFactories());
-//
-//	for (unsigned int ownedFactoriesIndex = 0; ownedFactoriesIndex < ownedFactories.size(); ownedFactoriesIndex++)
-//	{
-//		int ownedFactoryId = ownedFactories[ownedFactoriesIndex].GetId();
-//		averageDistancesVector[ownedFactoryId] = model.GetAverageDistance(ownedFactoryId, -1, 0);
-//	}
-
 	for (int factoryId = 0; factoryId < model.GetNumFactories(); factoryId++)
 	{
 		int cyborgs = availableCyborgs[factoryId];
@@ -1569,32 +1560,17 @@ string Bot::MoveRemainingUnits(const Model& model, vector<int>& availableCyborgs
 			vector<int> sortedEnemyFactories = model.GetFactoriesSortedByDistance(factoryId, -1);
 			vector<int> path = model.GetPath(factoryId, sortedEnemyFactories[0]);
 
+			if (model.GetFactory(path[0]).GetOwner() == -1)
+			{
+				continue;
+			}
+
 			if (commands != "")
 			{
 				commands.append(";");
 			}
 
 			commands.append("MOVE " + to_string(factoryId) + " " + to_string(path[0]) + " " + to_string(cyborgs));
-
-//			vector<int> sortedOwnedFactories = model.GetFactoriesSortedByDistance(factoryId, 1);
-//
-//			for (unsigned int sortedOwnedFactoriesIndex = 0; sortedOwnedFactoriesIndex < sortedOwnedFactories.size();
-//					sortedOwnedFactoriesIndex++)
-//			{
-//				int sortedOwnedFactoryId = sortedOwnedFactories[sortedOwnedFactoriesIndex];
-//
-//				if (averageDistancesVector[sortedOwnedFactoryId] < averageDistancesVector[factoryId])
-//				{
-//					if (commands != "")
-//					{
-//						commands += ";";
-//					}
-//
-//					commands.append("MOVE " + to_string(factoryId) + " " + to_string(sortedOwnedFactoryId) + " " + to_string(cyborgs));
-//
-//					break;
-//				}
-//			}
 		}
 	}
 
