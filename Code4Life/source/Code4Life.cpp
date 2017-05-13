@@ -10,6 +10,8 @@
 #include <vector>
 #include <algorithm>
 
+const std::string MOLECULE_TYPES[5] { "A", "B", "C", "D", "E" };
+
 namespace model
 {
 
@@ -112,6 +114,11 @@ public:
 	{
 		return _cost[index];
 	}
+
+	inline int GetTotalCost() const
+	{
+		return _cost[0] + _cost[1] + _cost[2] + _cost[3] + _cost[4];
+	}
 };
 
 class Model
@@ -162,10 +169,291 @@ public:
 	{
 		return _enemy;
 	}
+
+	/**
+	 * Returns an array with the owned samples.
+	 * -1 = cloud
+	 *  0 = bot
+	 *  1 = enemy
+	 */
+	std::vector<SampleData> GetSamples(int owner) const
+	{
+		std::vector<SampleData> result;
+		auto pos = _sampleData.begin();
+
+		while (pos != _sampleData.end())
+		{
+			pos = find_if(pos, _sampleData.end(), [&owner](const SampleData& sample)
+			{	return sample.GetCarrier()==owner;});
+
+			if (pos != _sampleData.end())
+			{
+				int index = distance(_sampleData.begin(), pos);
+				result.emplace_back(_sampleData[index]);
+				pos++;
+			}
+		}
+
+		return result;
+	}
 };
 
 }
 using namespace model;
+
+namespace bot
+{
+
+class Bot
+{
+private:
+	enum BotState
+	{
+		SAMPLES, DIAGNOSIS, MOLECULES, LABORATORY
+	};
+
+	BotState _currentState = BotState::SAMPLES;
+
+public:
+
+	std::string Run(const Model& model)
+	{
+		std::string command = "WAIT";
+
+		while (true)
+		{
+			bool commandIssued = false;
+
+			switch (_currentState)
+			{
+				case BotState::SAMPLES:
+					commandIssued = HandleSampleState(model, command);
+					break;
+				case BotState::DIAGNOSIS:
+					commandIssued = HandleDiagnosisState(model, command);
+					break;
+				case BotState::MOLECULES:
+					commandIssued = HandleMoleculeState(model, command);
+					break;
+				case BotState::LABORATORY:
+					commandIssued = HandleLaboratoryState(model, command);
+					break;
+			}
+
+			if (commandIssued)
+			{
+				break;
+			}
+		}
+
+		return command;
+
+//		Robot bot = model.GetBot();
+//		std::vector<SampleData> botSamples = model.GetSamples(0);
+//		std::vector<SampleData> cloudSamples = model.GetSamples(-1);
+//
+//		if (botSamples.size() == 0 && bot.GetTarget() != "DIAGNOSIS")
+//		{
+//			return "GOTO DIAGNOSIS";
+//		}
+//		else if (bot.GetTarget() == "DIAGNOSIS" && botSamples.size() < 3)
+//		{
+//			return "CONNECT 2";
+////			int bestSampleId = SelectBestSample(cloudSamples);
+////
+////			if (bestSampleId != -1)
+////			{
+////				return "CONNECT " + std::to_string(bestSampleId);
+////			}
+//		}
+//		else
+//		{
+//			SampleData currentSample = botSamples[0];
+//			int neededMolecule = -1;
+//			bool moleculesNeeded = false;
+//
+//			for (int moleculeIndex = 0; moleculeIndex < 5; moleculeIndex++)
+//			{
+//				int need = currentSample.GetCost(moleculeIndex) - bot.GetStorage(moleculeIndex);
+//
+//				if (need > 0)
+//				{
+//					neededMolecule = moleculeIndex;
+//					moleculesNeeded = true;
+//					break;
+//				}
+//			}
+//
+//			if (moleculesNeeded)
+//			{
+//				if (bot.GetTarget() != "MOLECULES")
+//				{
+//					return "GOTO MOLECULES";
+//				}
+//				else
+//				{
+//					return "CONNECT " + MOLECULE_TYPES[neededMolecule];
+//				}
+//			}
+//			else
+//			{
+//				if (bot.GetTarget() != "LABORATORY")
+//				{
+//					return "GOTO LABORATORY";
+//				}
+//				else
+//				{
+//					return "CONNECT " + std::to_string(currentSample.GetSampleId());
+//				}
+//			}
+//		}
+//
+//		return "WAIT";
+	}
+
+private:
+
+	bool HandleSampleState(const Model& model, std::string& outCommand)
+	{
+		Robot bot = model.GetBot();
+		std::vector<SampleData> botSamples = model.GetSamples(0);
+
+		if (bot.GetTarget() != "SAMPLES")
+		{
+			outCommand = "GOTO SAMPLES";
+			return true;
+		}
+		else if (botSamples.size() < 1)
+		{
+			outCommand = "CONNECT 2";
+			return true;
+		}
+
+		this->_currentState = BotState::DIAGNOSIS;
+		return false;
+	}
+
+	bool HandleDiagnosisState(const Model& model, std::string& outCommand)
+	{
+		Robot bot = model.GetBot();
+		std::vector<SampleData> botSamples = model.GetSamples(0);
+
+		if (bot.GetTarget() != "DIAGNOSIS")
+		{
+			outCommand = "GOTO DIAGNOSIS";
+			return true;
+		}
+		else
+		{
+			for (unsigned int botSamplesIndex = 0; botSamplesIndex < botSamples.size(); botSamplesIndex++)
+			{
+				if (botSamples[botSamplesIndex].GetTotalCost() == -5)
+				{
+					outCommand = "CONNECT " + std::to_string(botSamples[botSamplesIndex].GetSampleId());
+					return true;
+				}
+//				else
+//				{
+//					SampleData sample = botSamples[botSamplesIndex];
+//					std::cerr << "SampleData " << sample.GetSampleId() << std::endl;
+//					std::cerr << " -cost: " << sample.GetCost(0) << "," << sample.GetCost(1) << "," << sample.GetCost(2) << ","
+//							<< sample.GetCost(3) << "," << sample.GetCost(4) << std::endl;
+//					std::cerr << " -health: " << sample.GetHealth() << std::endl;
+//				}
+			}
+		}
+
+		this->_currentState = BotState::MOLECULES;
+		return false;
+	}
+
+	bool HandleMoleculeState(const Model& model, std::string& outCommand)
+	{
+		Robot bot = model.GetBot();
+		std::vector<SampleData> botSamples = model.GetSamples(0);
+
+		if (bot.GetTarget() != "MOLECULES")
+		{
+			outCommand = "GOTO MOLECULES";
+			return true;
+		}
+		else
+		{
+			int neededMolecules[5] { 0, 0, 0, 0, 0 };
+
+			for (unsigned int botSamplesIndex = 0; botSamplesIndex < botSamples.size(); botSamplesIndex++)
+			{
+				for (int moleculeIndex = 0; moleculeIndex < 5; moleculeIndex++)
+				{
+					neededMolecules[moleculeIndex] += botSamples[botSamplesIndex].GetCost(moleculeIndex);
+
+					if (bot.GetStorage(moleculeIndex) < neededMolecules[moleculeIndex])
+					{
+						outCommand = "CONNECT " + MOLECULE_TYPES[moleculeIndex];
+						return true;
+					}
+				}
+			}
+		}
+
+		this->_currentState = BotState::LABORATORY;
+		return false;
+	}
+
+	bool HandleLaboratoryState(const Model& model, std::string& outCommand)
+	{
+		Robot bot = model.GetBot();
+		std::vector<SampleData> botSamples = model.GetSamples(0);
+
+		if (bot.GetTarget() != "LABORATORY")
+		{
+			outCommand = "GOTO LABORATORY";
+			return true;
+		}
+		else if (botSamples.size() > 0)
+		{
+			outCommand = "CONNECT " + std::to_string(botSamples[0].GetSampleId());
+			return true;
+		}
+
+		this->_currentState = BotState::SAMPLES;
+		return false;
+	}
+
+	/**
+	 * Return the id of the best sample
+	 */
+	static int SelectBestSample(const std::vector<SampleData>& samples)
+	{
+		int bestSampleId = -1;
+		double bestSampleScore = 0;
+		int bestSampleHealth = 0;
+
+		for (unsigned int sampleIndex = 0; sampleIndex < samples.size(); sampleIndex++)
+		{
+			SampleData currentSample = samples[sampleIndex];
+			double currentSampleScore = currentSample.GetHealth() / (double) currentSample.GetTotalCost();
+
+			if (bestSampleId == -1 || currentSampleScore > bestSampleScore)
+			{
+				bestSampleId = currentSample.GetSampleId();
+				bestSampleScore = currentSampleScore;
+				bestSampleHealth = currentSample.GetHealth();
+			}
+			else if (currentSampleScore == bestSampleScore && currentSample.GetHealth() > bestSampleHealth)
+			{
+				bestSampleId = currentSample.GetSampleId();
+				bestSampleScore = currentSampleScore;
+				bestSampleHealth = currentSample.GetHealth();
+			}
+		}
+
+		return bestSampleId;
+	}
+};
+
+}
+using namespace bot;
 
 /**
  * Bring data on patient samples from the diagnosis machine to the laboratory with enough molecules to produce medicine!
@@ -173,6 +461,7 @@ using namespace model;
 int main()
 {
 	Model _model;
+	Bot _bot;
 
 	int projectCount;
 	std::cin >> projectCount;
@@ -242,11 +531,22 @@ int main()
 			std::cin.ignore();
 
 			_model.AddSampleData(sampleId, carriedBy, rank, expertiseGain, health, costA, costB, costC, costD, costE);
+
+			//std::cerr << "SampleData " << sampleId << std::endl;
+			//std::cerr << " -cost: " << costA << "," << costB << "," << costC << "," << costD << "," << costE << std::endl;
+			//std::cerr << " -health: " << health << std::endl;
 		}
 
-		// Write an action using cout. DON'T FORGET THE "<< endl"
-		// To debug: cerr << "Debug messages..." << endl;
+		//================================================================================================
+		//
 
-		std::cout << "GOTO DIAGNOSIS" << std::endl;
+		std::string command = _bot.Run(_model);
+
+		std::cout << command << std::endl;
+
+		//================================================================================================
+		//
+
+		_model.CleanUp();
 	}
 }
