@@ -126,13 +126,14 @@ class Model
 private:
 	Robot _bot;
 	Robot _enemy;
+	int _availableMolecules[5] { 0, 0, 0, 0, 0 };
 	std::vector<SampleData> _sampleData;
 
 public:
 	//===============================================
 	//SETTER
 
-	inline void UpdateRobot(int robotId, std::string target, int eta, int score, int storageA, int storageB, int storageC, int storageD,
+	void UpdateRobot(int robotId, std::string target, int eta, int score, int storageA, int storageB, int storageC, int storageD,
 			int storageE, int expertiseA, int expertiseB, int expertiseC, int expertiseD, int expertiseE)
 	{
 		if (robotId == 0)
@@ -145,6 +146,15 @@ public:
 			_enemy.Update(target, eta, score, storageA, storageB, storageC, storageD, storageE, expertiseA, expertiseB, expertiseC,
 					expertiseD, expertiseE);
 		}
+	}
+
+	void SetAvailableMolecules(int availableA, int availableB, int availableC, int availableD, int availableE)
+	{
+		_availableMolecules[0] = availableA;
+		_availableMolecules[1] = availableB;
+		_availableMolecules[2] = availableC;
+		_availableMolecules[3] = availableD;
+		_availableMolecules[4] = availableE;
 	}
 
 	inline void CleanUp()
@@ -168,6 +178,22 @@ public:
 	inline Robot GetEnemy() const
 	{
 		return _enemy;
+	}
+
+	inline int GetAvailableMolecules(int index) const
+	{
+		return _availableMolecules[index];
+	}
+
+	std::vector<int> GetAvailableMolecules() const
+	{
+		std::vector<int> result;
+		result.push_back(_availableMolecules[0]);
+		result.push_back(_availableMolecules[1]);
+		result.push_back(_availableMolecules[2]);
+		result.push_back(_availableMolecules[3]);
+		result.push_back(_availableMolecules[4]);
+		return result;
 	}
 
 	/**
@@ -196,6 +222,17 @@ public:
 
 		return result;
 	}
+
+	/**
+	 *
+	 */
+	SampleData GetSample(int sampleId) const
+	{
+		auto pos = find_if(_sampleData.begin(), _sampleData.end(), [&sampleId](const SampleData& sample)
+		{	return sample.GetSampleId()==sampleId;});
+		int index = std::distance(_sampleData.begin(), pos);
+		return _sampleData[index];
+	}
 };
 
 }
@@ -218,7 +255,13 @@ public:
 
 	std::string Run(const Model& model)
 	{
+		Robot bot = model.GetBot();
 		std::string command = "WAIT";
+
+		if (bot.GetETA() > 0)
+		{
+			return command;
+		}
 
 		while (true)
 		{
@@ -247,68 +290,6 @@ public:
 		}
 
 		return command;
-
-//		Robot bot = model.GetBot();
-//		std::vector<SampleData> botSamples = model.GetSamples(0);
-//		std::vector<SampleData> cloudSamples = model.GetSamples(-1);
-//
-//		if (botSamples.size() == 0 && bot.GetTarget() != "DIAGNOSIS")
-//		{
-//			return "GOTO DIAGNOSIS";
-//		}
-//		else if (bot.GetTarget() == "DIAGNOSIS" && botSamples.size() < 3)
-//		{
-//			return "CONNECT 2";
-////			int bestSampleId = SelectBestSample(cloudSamples);
-////
-////			if (bestSampleId != -1)
-////			{
-////				return "CONNECT " + std::to_string(bestSampleId);
-////			}
-//		}
-//		else
-//		{
-//			SampleData currentSample = botSamples[0];
-//			int neededMolecule = -1;
-//			bool moleculesNeeded = false;
-//
-//			for (int moleculeIndex = 0; moleculeIndex < 5; moleculeIndex++)
-//			{
-//				int need = currentSample.GetCost(moleculeIndex) - bot.GetStorage(moleculeIndex);
-//
-//				if (need > 0)
-//				{
-//					neededMolecule = moleculeIndex;
-//					moleculesNeeded = true;
-//					break;
-//				}
-//			}
-//
-//			if (moleculesNeeded)
-//			{
-//				if (bot.GetTarget() != "MOLECULES")
-//				{
-//					return "GOTO MOLECULES";
-//				}
-//				else
-//				{
-//					return "CONNECT " + MOLECULE_TYPES[neededMolecule];
-//				}
-//			}
-//			else
-//			{
-//				if (bot.GetTarget() != "LABORATORY")
-//				{
-//					return "GOTO LABORATORY";
-//				}
-//				else
-//				{
-//					return "CONNECT " + std::to_string(currentSample.GetSampleId());
-//				}
-//			}
-//		}
-//
-//		return "WAIT";
 	}
 
 private:
@@ -318,17 +299,23 @@ private:
 		Robot bot = model.GetBot();
 		std::vector<SampleData> botSamples = model.GetSamples(0);
 
+		//======================================================
+		//move to samples
 		if (bot.GetTarget() != "SAMPLES")
 		{
 			outCommand = "GOTO SAMPLES";
 			return true;
 		}
-		else if (botSamples.size() < 1)
+
+		//======================================================
+		//take a sample
+		if (botSamples.size() < 1)
 		{
 			outCommand = "CONNECT 2";
 			return true;
 		}
 
+		//======================================================
 		this->_currentState = BotState::DIAGNOSIS;
 		return false;
 	}
@@ -338,31 +325,37 @@ private:
 		Robot bot = model.GetBot();
 		std::vector<SampleData> botSamples = model.GetSamples(0);
 
+		//======================================================
+		//move to diagnosis
 		if (bot.GetTarget() != "DIAGNOSIS")
 		{
 			outCommand = "GOTO DIAGNOSIS";
 			return true;
 		}
-		else
+
+		//======================================================
+		//diagnose all undiagnosed samples
+		for (unsigned int botSamplesIndex = 0; botSamplesIndex < botSamples.size(); botSamplesIndex++)
 		{
-			for (unsigned int botSamplesIndex = 0; botSamplesIndex < botSamples.size(); botSamplesIndex++)
+			if (botSamples[botSamplesIndex].GetTotalCost() == -5)
 			{
-				if (botSamples[botSamplesIndex].GetTotalCost() == -5)
-				{
-					outCommand = "CONNECT " + std::to_string(botSamples[botSamplesIndex].GetSampleId());
-					return true;
-				}
-//				else
-//				{
-//					SampleData sample = botSamples[botSamplesIndex];
-//					std::cerr << "SampleData " << sample.GetSampleId() << std::endl;
-//					std::cerr << " -cost: " << sample.GetCost(0) << "," << sample.GetCost(1) << "," << sample.GetCost(2) << ","
-//							<< sample.GetCost(3) << "," << sample.GetCost(4) << std::endl;
-//					std::cerr << " -health: " << sample.GetHealth() << std::endl;
-//				}
+				outCommand = "CONNECT " + std::to_string(botSamples[botSamplesIndex].GetSampleId());
+				return true;
 			}
 		}
 
+		//======================================================
+		//print diagnosed samples to console
+		for (unsigned int botSamplesIndex = 0; botSamplesIndex < botSamples.size(); botSamplesIndex++)
+		{
+			SampleData sample = botSamples[botSamplesIndex];
+			std::cerr << "SampleData " << sample.GetSampleId() << std::endl;
+			std::cerr << " -cost: " << sample.GetCost(0) << "," << sample.GetCost(1) << "," << sample.GetCost(2) << "," << sample.GetCost(3)
+					<< "," << sample.GetCost(4) << std::endl;
+			std::cerr << " -health: " << sample.GetHealth() << std::endl;
+		}
+
+		//======================================================
 		this->_currentState = BotState::MOLECULES;
 		return false;
 	}
@@ -372,30 +365,40 @@ private:
 		Robot bot = model.GetBot();
 		std::vector<SampleData> botSamples = model.GetSamples(0);
 
+		//======================================================
+		//move to molecules
 		if (bot.GetTarget() != "MOLECULES")
 		{
 			outCommand = "GOTO MOLECULES";
 			return true;
 		}
-		else
-		{
-			int neededMolecules[5] { 0, 0, 0, 0, 0 };
 
-			for (unsigned int botSamplesIndex = 0; botSamplesIndex < botSamples.size(); botSamplesIndex++)
-			{
-				for (int moleculeIndex = 0; moleculeIndex < 5; moleculeIndex++)
-				{
-					neededMolecules[moleculeIndex] += botSamples[botSamplesIndex].GetCost(moleculeIndex);
+		//======================================================
+		//select the sample(s) to collect molecules for
+		std::vector<int> bestSamples = SelectBestSamples(botSamples, bot, model.GetAvailableMolecules());
 
-					if (bot.GetStorage(moleculeIndex) < neededMolecules[moleculeIndex])
-					{
-						outCommand = "CONNECT " + MOLECULE_TYPES[moleculeIndex];
-						return true;
-					}
-				}
-			}
-		}
+		//======================================================
+		//
+//		else
+//		{
+//			int neededMolecules[5] { 0, 0, 0, 0, 0 };
+//
+//			for (unsigned int botSamplesIndex = 0; botSamplesIndex < botSamples.size(); botSamplesIndex++)
+//			{
+//				for (int moleculeIndex = 0; moleculeIndex < 5; moleculeIndex++)
+//				{
+//					neededMolecules[moleculeIndex] += botSamples[botSamplesIndex].GetCost(moleculeIndex);
+//
+//					if (bot.GetStorage(moleculeIndex) < neededMolecules[moleculeIndex])
+//					{
+//						outCommand = "CONNECT " + MOLECULE_TYPES[moleculeIndex];
+//						return true;
+//					}
+//				}
+//			}
+//		}
 
+		//======================================================
 		this->_currentState = BotState::LABORATORY;
 		return false;
 	}
@@ -421,34 +424,50 @@ private:
 	}
 
 	/**
-	 * Return the id of the best sample
+	 *
 	 */
-	static int SelectBestSample(const std::vector<SampleData>& samples)
+	static std::vector<int> SelectBestSamples(const std::vector<SampleData>& samples, const Robot& bot,
+			const std::vector<int>& availableMolecules)
 	{
-		int bestSampleId = -1;
-		double bestSampleScore = 0;
-		int bestSampleHealth = 0;
+		std::vector<int> bestCombination;
+		double bestCombinationScore;
 
-		for (unsigned int sampleIndex = 0; sampleIndex < samples.size(); sampleIndex++)
+		//TODO
+
+
+		return bestCombination;
+	}
+
+	/**
+	 *	Computes the cost of a sample, takes into consideration expertise
+	 */
+	static std::vector<int> ComputeSampleCost(const SampleData& sample, const Robot& bot)
+	{
+		std::vector<int> result(5);
+
+		for (int moleculeIndex = 0; moleculeIndex < 5; moleculeIndex++)
 		{
-			SampleData currentSample = samples[sampleIndex];
-			double currentSampleScore = currentSample.GetHealth() / (double) currentSample.GetTotalCost();
-
-			if (bestSampleId == -1 || currentSampleScore > bestSampleScore)
-			{
-				bestSampleId = currentSample.GetSampleId();
-				bestSampleScore = currentSampleScore;
-				bestSampleHealth = currentSample.GetHealth();
-			}
-			else if (currentSampleScore == bestSampleScore && currentSample.GetHealth() > bestSampleHealth)
-			{
-				bestSampleId = currentSample.GetSampleId();
-				bestSampleScore = currentSampleScore;
-				bestSampleHealth = currentSample.GetHealth();
-			}
+			result[moleculeIndex] = sample.GetCost(moleculeIndex) - bot.GetExpertise(moleculeIndex);
 		}
 
-		return bestSampleId;
+		return result;
+	}
+
+	/**
+	 *	Computes the sum of the cost of a sample, takes into consideration expertise
+	 */
+	static int ComputeTotalSampleCost(const SampleData& sample, const Robot& bot)
+	{
+		std::vector<int> cost = ComputeSampleCost(sample, bot);
+		return cost[0] + cost[1] + cost[2] + cost[3] + cost[4];
+	}
+
+	/**
+	 *
+	 */
+	static double ComputeSampleScore(const int& totalCost, int health)
+	{
+		return (double) health / (double) totalCost;
 	}
 };
 
@@ -511,6 +530,8 @@ int main()
 		int availableE;
 		std::cin >> availableA >> availableB >> availableC >> availableD >> availableE;
 		std::cin.ignore();
+
+		_model.SetAvailableMolecules(availableA, availableB, availableC, availableD, availableE);
 
 		int sampleCount;
 		std::cin >> sampleCount;
