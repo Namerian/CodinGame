@@ -375,28 +375,34 @@ private:
 
 		//======================================================
 		//select the sample(s) to collect molecules for
-		std::vector<int> bestSamples = SelectBestSamples(botSamples, bot, model.GetAvailableMolecules());
+		std::vector<int> bestSampleCombination = SelectBestSamples(botSamples, bot, model.GetAvailableMolecules());
+
+		if (bestSampleCombination.size() == 0)
+		{
+			outCommand = "WAIT";
+			return true;
+		}
 
 		//======================================================
 		//
-//		else
-//		{
-//			int neededMolecules[5] { 0, 0, 0, 0, 0 };
-//
-//			for (unsigned int botSamplesIndex = 0; botSamplesIndex < botSamples.size(); botSamplesIndex++)
-//			{
-//				for (int moleculeIndex = 0; moleculeIndex < 5; moleculeIndex++)
-//				{
-//					neededMolecules[moleculeIndex] += botSamples[botSamplesIndex].GetCost(moleculeIndex);
-//
-//					if (bot.GetStorage(moleculeIndex) < neededMolecules[moleculeIndex])
-//					{
-//						outCommand = "CONNECT " + MOLECULE_TYPES[moleculeIndex];
-//						return true;
-//					}
-//				}
-//			}
-//		}
+		int neededMolecules[5] { 0, 0, 0, 0, 0 };
+
+		for (unsigned int combinationIndex = 0; combinationIndex < bestSampleCombination.size(); combinationIndex++)
+		{
+			SampleData sample = model.GetSample(bestSampleCombination[combinationIndex]);
+			std::vector<int> sampleCost = ComputeSampleCost(sample, bot);
+
+			for (int moleculeIndex = 0; moleculeIndex < 5; moleculeIndex++)
+			{
+				neededMolecules[moleculeIndex] += sampleCost[moleculeIndex];
+
+				if (bot.GetStorage(moleculeIndex) < neededMolecules[moleculeIndex])
+				{
+					outCommand = "CONNECT " + MOLECULE_TYPES[moleculeIndex];
+					return true;
+				}
+			}
+		}
 
 		//======================================================
 		this->_currentState = BotState::LABORATORY;
@@ -433,7 +439,6 @@ private:
 		double bestCombinationScore;
 
 		//TODO
-
 
 		return bestCombination;
 	}
