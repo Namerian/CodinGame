@@ -4,29 +4,22 @@
 #include <algorithm>
 #include <cmath>
 
-//################################################
+//################################################################################################
 
-const int BARRACKS_STRUCTURE_TYPE = 2;
-
-const int NO_OWNER = -1;
-const int FRIENDLY_OWNER = 0;
-const int ENEMY_OWNER = 1;
-
-const int QUEEN_UNIT_TYPE = -1;
-const int KNIGHT_UNIT_TYPE = 0;
-const int ARCHER_UNIT_TYPE = 1;
-
-//################################################
+// -- UTILITY
 
 static double ComputeDistance(int ax, int ay, int bx, int by)
 {
     return std::sqrt(std::pow(ax - bx, 2) + std::pow(ay - by, 2));
 }
 
-//################################################
-//################################################
+//################################################################################################
+//################################################################################################
 
-// MODEL
+// -- NAMESPACE MODEL
+
+namespace MODEL
+{
 
 struct SITE
 {
@@ -59,8 +52,9 @@ struct UNIT
     }
 };
 
-class MODEL
+class GAMESTATE
 {
+    // -- ATTRIBUTES
   public:
     int SiteCount;
     int Gold;
@@ -70,6 +64,31 @@ class MODEL
     std::vector<SITE> SiteVector;
     std::vector<UNIT> UnitVector;
 
+    // -- INQUIRIES
+  public:
+    const SITE *GetSite(int site_id) const
+    {
+        for (int site_index = 0; site_index < SiteVector.size(); site_index++)
+        {
+            const SITE &currentSite = SiteVector.at(site_index);
+            if (currentSite.ID == site_id)
+            {
+                return &currentSite;
+            }
+        }
+    }
+
+    const std::vector<SITE> &GetSites() const
+    {
+        return SiteVector;
+    }
+
+    const std::vector<UNIT> &GetUnits() const
+    {
+        return UnitVector;
+    }
+
+    // -- OPERATIONS
   public:
     void Initialize(int site_count)
     {
@@ -83,189 +102,236 @@ class MODEL
         }
     }
 
-    SITE *GetSite(int site_id)
+    void SetSite(int site_id, int x, int y, int radius)
     {
-        for (int site_index = 0; site_index < SiteVector.size(); site_index++)
+        if (site_id > -1 && site_id < SiteCount)
         {
-            SITE &currentSite = SiteVector.at(site_index);
-            if (currentSite.ID == site_id)
-            {
-                return &currentSite;
-            }
+            SITE &site = SiteVector.at(site_id);
+            site.X = x;
+            site.Y = y;
+            site.Radius = radius;
         }
     }
 
-    std::vector<SITE *> GetSitesOwnedBy(int owner)
+    void UpdateSite(int site_id, int structure_type, int owner, int param1, int param2)
     {
-        std::vector<SITE *> result;
-
-        for (int site_index = 0; site_index < SiteCount; site_index++)
+        if (site_id > -1 && site_id < SiteCount)
         {
-            SITE &currentSite = SiteVector.at(site_index);
-            if (currentSite.Owner == owner)
-            {
-                result.push_back(&currentSite);
-            }
+            SITE &site = SiteVector.at(site_id);
+            site.StructureType = structure_type;
+            site.Owner = owner;
+            site.Param1 = param1;
+            site.Param2 = param2;
         }
-
-        return result;
     }
 
-    void ResetUnitVector()
+    void ResetUnitVector(int unit_count)
     {
         UnitVector.clear();
+        UnitVector.reserve(unit_count);
     }
 
     void SetUnit(int x, int y, int owner, int unit_type, int health)
     {
         UnitVector.emplace_back(UNIT(x, y, owner, unit_type, health));
     }
-
-    UNIT *GetUnit(int owner, int unit_type)
-    {
-        for (UNIT &unit : UnitVector)
-        {
-            if (unit.Owner == owner && unit.UnitType == unit_type)
-            {
-                return &unit;
-            }
-        }
-    }
-
-    std::vector<UNIT *> GetUnits(int owner, int unit_type)
-    {
-        std::vector<UNIT *> result;
-
-        for (UNIT &unit : UnitVector)
-        {
-            if (unit.Owner == owner && unit.UnitType == unit_type)
-            {
-                result.push_back(&unit);
-            }
-        }
-
-        return result;
-    }
 };
+}
 
-//################################################
-//################################################
+//################################################################################################
+//################################################################################################
 
-// AI
+// -- NAMESPACE AI
 
-class AI
+namespace AI
 {
-  private:
-    MODEL *Model;
+
+const std::string DEFAULT_QUEEN_COMMAND = "WAIT";
+const std::string DEFAULT_TRAINING_COMMAND = "TRAIN";
+
+const int BARRACKS_STRUCTURE_TYPE = 2;
+
+const int NO_OWNER = -1;
+const int FRIENDLY_OWNER = 0;
+const int ENEMY_OWNER = 1;
+
+const int QUEEN_UNIT_TYPE = -1;
+const int KNIGHT_UNIT_TYPE = 0;
+const int ARCHER_UNIT_TYPE = 1;
+
+class BLACKBOARD
+{
+  public:
+    const MODEL::GAMESTATE *CurrentGameState;
 
   public:
-    AI(MODEL *model)
+    void UpdateBlackboard(const MODEL::GAMESTATE *current_gamestate)
     {
-        Model = model;
-    }
-
-    std::string ComputeQueenActions(MODEL &model)
-    {
-        std::string result = "";
-        UNIT *queen = model.GetUnit(FRIENDLY_OWNER, QUEEN_UNIT_TYPE);
-        std::vector<SITE *> neutral_sites = model.GetSitesOwnedBy(NO_OWNER);
-
-        if (queen == nullptr)
-        {
-            std::cerr << "My Queen is null!" << std::endl;
-            return "WAIT";
-        }
-
-        if (model.TouchedSite != -1)
-        {
-            SITE *touched_site = model.GetSite(model.TouchedSite);
-            if (touched_site->Owner == NO_OWNER)
-            {
-                result.append("BUILD ");
-                result.append(std::to_string(touched_site->ID));
-                result.append(" BARRACKS-");
-                result.append("KNIGHT");
-                return result;
-            }
-        }
-
-        if (neutral_sites.size() > 0)
-        {
-            SITE *nearestSite = neutral_sites.at(0);
-            double distance = ComputeDistance(queen->X, queen->Y, nearestSite->X, nearestSite->Y);
-
-            for (int site_index = 1; site_index < neutral_sites.size(); site_index++)
-            {
-                SITE *currentSite = neutral_sites.at(site_index);
-                double newDistance = ComputeDistance(queen->X, queen->Y, currentSite->X, currentSite->Y);
-
-                if (newDistance < distance)
-                {
-                    nearestSite = currentSite;
-                    distance = newDistance;
-                }
-            }
-
-            result.append("MOVE ");
-            result.append(std::to_string(nearestSite->X));
-            result.append(" ");
-            result.append(std::to_string(nearestSite->Y));
-            return result;
-        }
-        else
-        {
-            std::cerr << "No neutral sites left!" << std::endl;
-        }
-
-        return "WAIT";
-    }
-
-    std::string ComputeTrainingActions(MODEL &model)
-    {
-        std::vector<SITE *> owned_sites = model.GetSitesOwnedBy(FRIENDLY_OWNER);
-        std::vector<SITE *> knight_barracks;
-        std::vector<SITE *> archer_barracks;
-        std::string result = "TRAIN";
-
-        for (SITE *site : owned_sites)
-        {
-            if (site->StructureType == BARRACKS_STRUCTURE_TYPE && site->Param1 == 0)
-            {
-                if (site->Param2 == KNIGHT_UNIT_TYPE)
-                {
-                    knight_barracks.push_back(site);
-                }
-                else if (site->Param2 == ARCHER_UNIT_TYPE)
-                {
-                    archer_barracks.push_back(site);
-                }
-            }
-        }
-
-        if (knight_barracks.size() > 0)
-        {
-            for (SITE *site : knight_barracks)
-            {
-                result.append(" ");
-                result.append(std::to_string(site->ID));
-            }
-        }
-
-        return result;
+        CurrentGameState = current_gamestate;
     }
 };
 
-//################################################
-//################################################
+class QUEEN
+{
+  private:
+    BLACKBOARD *Blackboard;
 
-// MAIN
+  public:
+    QUEEN(BLACKBOARD *blackboard)
+    {
+        Blackboard = blackboard;
+    }
 
-void InitMain(MODEL &model)
+    std::string ComputeCommands()
+    {
+        return DEFAULT_QUEEN_COMMAND;
+    }
+};
+
+class QUARTERMASTER
+{
+  private:
+    const int DesiredKnightCount = 8;
+
+  private:
+    BLACKBOARD *Blackboard;
+
+  public:
+    QUARTERMASTER(BLACKBOARD *blackboard)
+    {
+        Blackboard = blackboard;
+    }
+
+    std::string ComputeCommands()
+    {
+        return DEFAULT_TRAINING_COMMAND;
+    }
+};
+
+class HIGH_COMMAND
+{
+  private:
+    BLACKBOARD Blackboard;
+    QUEEN Queen = QUEEN(&Blackboard);
+    QUARTERMASTER Quartermaster = QUARTERMASTER(&Blackboard);
+
+  public:
+    HIGH_COMMAND()
+    {
+    }
+
+    std::pair<std::string, std::string> PlayTurn(MODEL::GAMESTATE *gamestate)
+    {
+        Blackboard.UpdateBlackboard(gamestate);
+
+        return std::make_pair(Queen.ComputeCommands(), Quartermaster.ComputeCommands());
+    }
+
+    //private:
+    // std::string ComputeQueenActions(MODEL::GAMESTATE *gamestate)
+    // {
+    //     std::string result = "";
+    //     MODEL::UNIT *queen = gamestate->GetUnit(FRIENDLY_OWNER, QUEEN_UNIT_TYPE);
+    //     std::vector<MODEL::SITE *> neutral_sites = gamestate->GetSitesOwnedBy(NO_OWNER);
+
+    //     if (queen == nullptr)
+    //     {
+    //         std::cerr << "My Queen is null!" << std::endl;
+    //         return "WAIT";
+    //     }
+
+    //     if (gamestate->TouchedSite != -1)
+    //     {
+    //         MODEL::SITE *touched_site = gamestate->GetSite(gamestate->TouchedSite);
+    //         if (touched_site->Owner == NO_OWNER)
+    //         {
+    //             result.append("BUILD ");
+    //             result.append(std::to_string(touched_site->ID));
+    //             result.append(" BARRACKS-");
+    //             result.append("KNIGHT");
+    //             return result;
+    //         }
+    //     }
+
+    //     if (neutral_sites.size() > 0)
+    //     {
+    //         MODEL::SITE *nearestSite = neutral_sites.at(0);
+    //         double distance = ComputeDistance(queen->X, queen->Y, nearestSite->X, nearestSite->Y);
+
+    //         for (int site_index = 1; site_index < neutral_sites.size(); site_index++)
+    //         {
+    //             MODEL::SITE *currentSite = neutral_sites.at(site_index);
+    //             double newDistance = ComputeDistance(queen->X, queen->Y, currentSite->X, currentSite->Y);
+
+    //             if (newDistance < distance)
+    //             {
+    //                 nearestSite = currentSite;
+    //                 distance = newDistance;
+    //             }
+    //         }
+
+    //         result.append("MOVE ");
+    //         result.append(std::to_string(nearestSite->X));
+    //         result.append(" ");
+    //         result.append(std::to_string(nearestSite->Y));
+    //         return result;
+    //     }
+    //     else
+    //     {
+    //         std::cerr << "No neutral sites left!" << std::endl;
+    //     }
+
+    //     return "WAIT";
+    // }
+
+    // std::string ComputeTrainingActions(MODEL::GAMESTATE *gamestate)
+    // {
+    //     std::vector<MODEL::SITE *> owned_sites = gamestate->GetSitesOwnedBy(FRIENDLY_OWNER);
+    //     std::vector<MODEL::SITE *> knight_barracks;
+    //     std::vector<MODEL::SITE *> archer_barracks;
+    //     std::string result = "TRAIN";
+
+    //     for (MODEL::SITE *site : owned_sites)
+    //     {
+    //         if (site->StructureType == BARRACKS_STRUCTURE_TYPE && site->Param1 == 0)
+    //         {
+    //             if (site->Param2 == KNIGHT_UNIT_TYPE)
+    //             {
+    //                 knight_barracks.push_back(site);
+    //             }
+    //             else if (site->Param2 == ARCHER_UNIT_TYPE)
+    //             {
+    //                 archer_barracks.push_back(site);
+    //             }
+    //         }
+    //     }
+
+    //     if (knight_barracks.size() > 0)
+    //     {
+    //         for (MODEL::SITE *site : knight_barracks)
+    //         {
+    //             result.append(" ");
+    //             result.append(std::to_string(site->ID));
+    //         }
+    //     }
+
+    //     return result;
+    // }
+};
+}
+
+//################################################################################################
+//################################################################################################
+
+// -- MAIN
+
+static void InitGamestate(MODEL::GAMESTATE &gamestate)
 {
     int site_count;
     std::cin >> site_count;
     std::cin.ignore();
-    model.Initialize(site_count);
+
+    gamestate.Initialize(site_count);
 
     for (int site_index = 0; site_index < site_count; site_index++)
     {
@@ -277,23 +343,21 @@ void InitMain(MODEL &model)
         std::cin >> id >> x >> y >> radius;
         std::cin.ignore();
 
-        SITE *site = model.GetSite(id);
-        site->X = x;
-        site->Y = y;
-        site->Radius = radius;
+        gamestate.SetSite(id, x, y, radius);
     }
 }
 
-void UpdateModel(MODEL &model)
+static void UpdateGamestate(MODEL::GAMESTATE &gamestate)
 {
     int gold;
     int touchedSite; // -1 if none
     std::cin >> gold >> touchedSite;
     std::cin.ignore();
-    model.Gold = gold;
-    model.TouchedSite = touchedSite;
 
-    for (int i = 0; i < model.SiteCount; i++)
+    gamestate.Gold = gold;
+    gamestate.TouchedSite = touchedSite;
+
+    for (int i = 0; i < gamestate.SiteCount; i++)
     {
         int site_id;
         int ignore1;        // used in future leagues
@@ -305,19 +369,16 @@ void UpdateModel(MODEL &model)
         std::cin >> site_id >> ignore1 >> ignore2 >> structure_type >> owner >> param1 >> param2;
         std::cin.ignore();
 
-        SITE *site = model.GetSite(site_id);
-        site->StructureType = structure_type;
-        site->Owner = owner;
-        site->Param1 = param1;
-        site->Param2 = param2;
+        gamestate.UpdateSite(site_id, structure_type, owner, param1, param2);
     }
 
-    int numUnits;
-    std::cin >> numUnits;
+    int unit_count;
+    std::cin >> unit_count;
     std::cin.ignore();
-    model.ResetUnitVector();
 
-    for (int i = 0; i < numUnits; i++)
+    gamestate.ResetUnitVector(unit_count);
+
+    for (int i = 0; i < unit_count; i++)
     {
         int x;
         int y;
@@ -327,28 +388,27 @@ void UpdateModel(MODEL &model)
         std::cin >> x >> y >> owner >> unit_type >> health;
         std::cin.ignore();
 
-        model.SetUnit(x, y, owner, unit_type, health);
+        gamestate.SetUnit(x, y, owner, unit_type, health);
     }
 }
 
 int main()
 {
-    MODEL model = MODEL();
-    AI AI_ = AI(&model);
+    MODEL::GAMESTATE gamestate;
+    AI::HIGH_COMMAND high_command;
 
-    InitMain(model);
+    InitGamestate(gamestate);
 
     // game loop
     while (1)
     {
-        UpdateModel(model);
+        UpdateGamestate(gamestate);
 
-        std::string queen_actions = AI_.ComputeQueenActions(model);
-        std::cout << queen_actions << std::endl;
+        std::pair<std::string, std::string> output = high_command.PlayTurn(&gamestate);
 
-        std::string training_actions = AI_.ComputeTrainingActions(model);
-        std::cout << training_actions << std::endl;
+        std::cout << output.first << std::endl;
+        std::cout << output.second << std::endl;
     }
 }
 
-//################################################
+//################################################################################################
