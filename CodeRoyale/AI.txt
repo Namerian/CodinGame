@@ -1,0 +1,64 @@
+//============================
+//============================
+
+BLACKBOARD
+
+-- Inquiries
+
+int GetGold();
+int GetTouchedSite();
+
+int GetTotalFriendlyUnitCount(int unit_type)
+
+int GetTotalFriendlyBarracksCount(int unit_type)
+
+SITE* GetNearestSite(int x, int y)
+
+-- Operations
+
+int TrainUnit(int unit_type)
+	if(!HAS_ENOUGH_GOLD || !IS_BARRACKs_AVAILABLE)
+		return;
+
+	SUBSTRACT_GOLD
+
+	int barracks_id = SELECT_BARRACKs;
+
+	UPDATE_BARRACKS_STATE
+
+	UPDATE_STUFF    // unit count, ...
+
+	return barracks_id;
+
+//============================
+//============================
+
+QUEEN
+
+ComputeCommands:
+	if(!KNIGHT_BARRACKS_BUILT)
+		BUILD_KNIGHT_BARRACKS
+
+	else if(!ARCHER_BARRACKS_BUILT)
+		BUILD_ARCHER_BARRACKS
+
+	else
+		AVOID_ENEMY_KNIGHTS    // and stay near friendly archers
+
+//============================
+//============================
+
+QUARTERMASTER
+
+ComputeCommands:
+	if(BB.KnightCount < min_knight_count)
+		TRAIN_KNIGHT
+
+	if(BB.ArcherCount < min_archer_count)
+		TRAIN_ARCHER
+
+	if(BB.KnightCount < des_knight_count)
+		TRAIN_KNIGHT
+
+	if(BB.ArcherCount < des_archer_count)
+		TRAIN_ARCHER
